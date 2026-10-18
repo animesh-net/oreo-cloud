@@ -11,7 +11,15 @@ def _env_float(name: str, default: float) -> float:
     return float(os.environ.get(name, default))
 
 
-def check_disk(path: str, max_percent: float) -> Check:
+def _env_list(name: str, default: str) -> list[str]:
+    return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
+
+
+def check_disk(path: str, max_percent: float, require_mount: bool = False) -> Check:
+    # A drive that is not mounted leaves an empty folder on the parent filesystem, so
+    # disk_usage would quietly report the parent's usage as if it were the drive's.
+    if require_mount and not os.path.ismount(path):
+        return Check(f"disk {path}", False, "not mounted")
     try:
         usage = shutil.disk_usage(path)
     except OSError as error:
@@ -51,8 +59,9 @@ def check_load(max_per_cpu: float) -> Check:
 
 def run() -> list[Check]:
     disk_max = _env_float("OREO_DISK_MAX_PERCENT", 90)
-    paths = os.environ.get("OREO_DISK_PATHS", "/").split(",")
-    checks = [check_disk(path.strip(), disk_max) for path in paths if path.strip()]
+    paths = _env_list("OREO_DISK_PATHS", "/")
+    must_mount = set(_env_list("OREO_MOUNT_PATHS", ""))
+    checks = [check_disk(path, disk_max, path in must_mount) for path in paths]
     checks.append(check_memory(_env_float("OREO_MEMORY_MAX_PERCENT", 90)))
     checks.append(check_temperature(_env_float("OREO_TEMPERATURE_MAX_C", 75)))
     checks.append(check_load(_env_float("OREO_LOAD_MAX_PER_CPU", 2)))

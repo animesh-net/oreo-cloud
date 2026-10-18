@@ -27,7 +27,8 @@ Configuration comes from environment variables:
 | `OREO_NTFY_URL` | none, required for alerts | ntfy topic URL, e.g. `https://ntfy.sh/<topic>` |
 | `OREO_NTFY_TOKEN` | none | ntfy access token, if the topic is protected |
 | `OREO_DOCKER_SOCKET` | `/var/run/docker.sock` | Docker socket for `health` |
-| `OREO_DISK_PATHS` | `/` | `system`, comma-separated mount points |
+| `OREO_DISK_PATHS` | `/` | `system`, comma-separated paths to check |
+| `OREO_MOUNT_PATHS` | none | `system`, paths from `OREO_DISK_PATHS` that must be mount points; a path that is not mounted fails instead of reporting its parent's usage |
 | `OREO_DISK_MAX_PERCENT` | `90` | `system` |
 | `OREO_MEMORY_MAX_PERCENT` | `90` | `system` |
 | `OREO_TEMPERATURE_MAX_C` | `75` | `system` |
@@ -60,7 +61,7 @@ Private packages share the account's 500 MB of free storage, so after publishing
 `compose.yaml` runs `oreo heartbeat` as the non-root `oreo` user, with:
 
 - the Docker socket mounted read-only and the socket's group added (`DOCKER_GID`), so `health` can list containers;
-- the host's root filesystem mounted read-only at `/host`, so `system` checks the Pi's disk rather than the container's;
+- the host's root filesystem mounted read-only at `/host` with `rslave` propagation, so `system` checks the Pi's disks rather than the container's and a drive that mounts after the container starts still shows up. It checks the NVMe at `/host` and the data SSD at `/host/mnt/data-hot-ssd1`, which must be a mount point; add the HDDs to both variables in `compose.yaml` once they are mounted;
 - hostname `oreo-cloud`, so heartbeat reports and alerts name the Pi;
 - port `8787` published on `OREO_BIND_IP` (set it to `tailscale ip -4` to keep the heartbeat off the LAN);
 - `OREO_HEARTBEAT_TOKEN` required, so it refuses to start without one.

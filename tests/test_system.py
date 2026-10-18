@@ -73,3 +73,22 @@ def test_run_checks_every_configured_disk(monkeypatch):
     names = [check.name for check in system.run()]
     assert names[:2] == ["disk /", "disk /tmp"]
     assert names[2:] == ["memory", "temperature", "load"]
+
+
+def test_unmounted_required_path_fails(tmp_path):
+    check = system.check_disk(str(tmp_path), 90, require_mount=True)
+    assert not check.ok
+    assert check.detail == "not mounted"
+
+
+def test_mounted_required_path_is_checked(monkeypatch, tmp_path):
+    monkeypatch.setattr(system.os.path, "ismount", lambda path: True)
+    monkeypatch.setattr(system.shutil, "disk_usage", lambda path: Usage(100, 40, 60))
+    assert system.check_disk(str(tmp_path), 90, require_mount=True).ok
+
+
+def test_run_requires_listed_mount_paths(monkeypatch, tmp_path):
+    monkeypatch.setenv("OREO_DISK_PATHS", f"/, {tmp_path}")
+    monkeypatch.setenv("OREO_MOUNT_PATHS", str(tmp_path))
+    by_name = {check.name: check for check in system.run()}
+    assert not by_name[f"disk {tmp_path}"].ok
