@@ -40,7 +40,7 @@ The heartbeat is meant to be reached only over Tailscale: don't forward its port
 
 ## Deployment
 
-Every push to `main` builds a `linux/arm64` image on GitHub's native ARM runners and publishes it as `ghcr.io/animesh-org/oreo-cloud:latest` (plus a `sha-<commit>` tag). Pull requests build the image without publishing it.
+Every push to `main` builds a `linux/arm64` image on GitHub's native ARM runners and publishes it as `ghcr.io/animesh-org/oreo-cloud:latest` (plus a `sha-<commit>` tag). Before anything is published, the workflow runs the integration tests in `tests/integration/` against the freshly built image; pull requests build and test the image without publishing it.
 
 On the Pi:
 
@@ -84,6 +84,15 @@ pre-commit install
 | pre-commit | ruff lint (with fixes) and format, whitespace and end-of-file fixes, YAML/TOML syntax, merge-conflict markers, large files, private keys, and a block on committing to `main` |
 | commit-msg | `scripts/check_commit_msg.py`: one line, capitalised, at most 72 characters, no WIP, no AI attribution |
 | pre-push | `pytest` |
+
+### Integration tests
+
+`tests/integration/test_image.py` runs the built image the way `compose.yaml` does on the Pi and checks that it runs as the non-root `oreo` user with access to Docker, that `/heartbeat` rejects missing or wrong tokens, reports a stopped container with `503` and recovers to `200`, that the container's own health check stays healthy while checks fail, that one-off `health` and `system` runs work, and that `compose.yaml` refuses to start without its required `.env` values. They need Docker and are skipped unless `OREO_IMAGE` is set:
+
+```bash
+docker build -t oreo-cloud:test .
+OREO_IMAGE=oreo-cloud:test pytest tests/integration -v
+```
 
 Run every check by hand with `pre-commit run --all-files`. CI runs the same hooks plus the commit-message check on every commit and the title of each pull request.
 
