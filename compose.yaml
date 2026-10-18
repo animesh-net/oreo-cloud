@@ -1,6 +1,6 @@
 services:
   oreo:
-    image: ghcr.io/animesh-org/oreo-cloud:latest
+    image: ghcr.io/animesh-net/oreo-cloud:latest
     container_name: oreo
     hostname: oreo-cloud
     restart: unless-stopped
