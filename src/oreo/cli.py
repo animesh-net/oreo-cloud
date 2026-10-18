@@ -6,7 +6,7 @@ import socket
 import sys
 from collections.abc import Callable
 
-from oreo import __version__, health, notify, system
+from oreo import __version__, health, heartbeat, notify, system
 from oreo.checks import Check, all_ok
 
 
@@ -53,6 +53,11 @@ def _cmd_system(args: argparse.Namespace) -> int:
     return _run_checks(system.run, "system check failed", args)
 
 
+def _cmd_heartbeat(args: argparse.Namespace) -> int:
+    heartbeat.serve(args.host, args.port)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="oreo", description="Operations CLI for the oreo-cloud home server."
@@ -75,6 +80,13 @@ def build_parser() -> argparse.ArgumentParser:
         cmd.add_argument("--json", action="store_true", help="print results as JSON")
         cmd.add_argument("--notify", action="store_true", help="send an ntfy alert on failure")
         cmd.set_defaults(handler=handler)
+
+    heartbeat_cmd = commands.add_parser(
+        "heartbeat", help="serve health and system results at /heartbeat for oreo-monitor"
+    )
+    heartbeat_cmd.add_argument("--host", help=f"default {heartbeat.DEFAULT_HOST}")
+    heartbeat_cmd.add_argument("--port", type=int, help=f"default {heartbeat.DEFAULT_PORT}")
+    heartbeat_cmd.set_defaults(handler=_cmd_heartbeat)
 
     return parser
 
