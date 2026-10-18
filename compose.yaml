@@ -10,9 +10,16 @@ services:
       OREO_HEARTBEAT_TOKEN: "${OREO_HEARTBEAT_TOKEN:?set OREO_HEARTBEAT_TOKEN in .env}"
       OREO_NTFY_URL: "${OREO_NTFY_URL:-}"
       OREO_NTFY_TOKEN: "${OREO_NTFY_TOKEN:-}"
-      OREO_DISK_PATHS: /host
+      OREO_DISK_PATHS: /host,/host/mnt/data-hot-ssd1
+      OREO_MOUNT_PATHS: /host/mnt/data-hot-ssd1
     ports:
       - "${OREO_BIND_IP:-0.0.0.0}:8787:8787"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /:/host:ro
+      # rslave: drives mounted after the container starts show up under /host too.
+      - type: bind
+        source: /
+        target: /host
+        read_only: true
+        bind:
+          propagation: rslave

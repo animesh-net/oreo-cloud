@@ -178,4 +178,7 @@ def test_compose_binds_heartbeat_to_bind_ip():
     service = json.loads(result.stdout)["services"]["oreo"]
     assert service["ports"][0]["host_ip"] == "100.64.0.5"
     assert service["group_add"] == ["996"]
-    assert service["environment"]["OREO_DISK_PATHS"] == "/host"
+    assert service["environment"]["OREO_DISK_PATHS"] == "/host,/host/mnt/data-hot-ssd1"
+    assert service["environment"]["OREO_MOUNT_PATHS"] == "/host/mnt/data-hot-ssd1"
+    [host_mount] = [v for v in service["volumes"] if v["target"] == "/host"]
+    assert host_mount["bind"]["propagation"] == "rslave"
