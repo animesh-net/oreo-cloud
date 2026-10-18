@@ -37,8 +37,18 @@ Configuration comes from environment variables:
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
-ruff check . && ruff format --check . && pytest
+pre-commit install
 ```
+
+`pre-commit install` sets up three git hooks from `.pre-commit-config.yaml`:
+
+| Hook | Runs |
+| --- | --- |
+| pre-commit | ruff lint (with fixes) and format, whitespace and end-of-file fixes, YAML/TOML syntax, merge-conflict markers, large files, private keys, and a block on committing to `main` |
+| commit-msg | `scripts/check_commit_msg.py`: one line, capitalised, at most 72 characters, no WIP, no AI attribution |
+| pre-push | `pytest` |
+
+Run every check by hand with `pre-commit run --all-files`. CI runs the same hooks plus the commit-message check on every commit and the title of each pull request.
 
 ## Changes
 
