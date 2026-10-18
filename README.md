@@ -40,14 +40,14 @@ The heartbeat is meant to be reached only over Tailscale: don't forward its port
 
 ## Deployment
 
-Every push to `main` builds a `linux/arm64` image on GitHub's native ARM runners and publishes it as `ghcr.io/animesh-org/oreo-cloud:latest` (plus a `sha-<commit>` tag). Before anything is published, the workflow runs the integration tests in `tests/integration/` against the freshly built image; pull requests build and test the image without publishing it.
+Every push to `main` builds a `linux/arm64` image on GitHub's native ARM runners and publishes it as `ghcr.io/animesh-net/oreo-cloud:latest` (plus a `sha-<commit>` tag). Before anything is published, the workflow runs the integration tests in `tests/integration/` against the freshly built image; pull requests build and test the image without publishing it.
 
 The repository and the image are private, so the Pi authenticates for both. Use a classic personal access token with only the `read:packages` scope for the registry, and `gh auth login` (or a read-only deploy key) for the clone.
 
 On the Pi:
 
 ```bash
-gh repo clone animesh-org/oreo-cloud && cd oreo-cloud
+gh repo clone animesh-net/oreo-cloud && cd oreo-cloud
 echo "$GHCR_TOKEN" | docker login ghcr.io -u animesh-net --password-stdin
 cp .env.example .env    # fill in DOCKER_GID, OREO_HEARTBEAT_TOKEN, OREO_NTFY_URL, OREO_BIND_IP
 docker compose up -d
@@ -55,7 +55,7 @@ docker compose up -d
 
 `docker login` stores the token in `~/.docker/config.json` on the Pi; it is never needed in this repository.
 
-Private packages share the organization's 500 MB of free storage, so after publishing, the workflow deletes all but the 10 most recent image versions. Images are pushed without build attestations: with them, each push creates several linked versions, and pruning by count could delete part of a newer image.
+Private packages share the account's 500 MB of free storage, so after publishing, the workflow deletes all but the 10 most recent image versions. Images are pushed without build attestations: with them, each push creates several linked versions, and pruning by count could delete part of a newer image.
 
 `compose.yaml` runs `oreo heartbeat` as the non-root `oreo` user, with:
 
