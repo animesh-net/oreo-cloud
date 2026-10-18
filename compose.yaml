@@ -1,0 +1,18 @@
+services:
+  oreo:
+    image: ghcr.io/animesh-org/oreo-cloud:latest
+    container_name: oreo
+    hostname: oreo-cloud
+    restart: unless-stopped
+    group_add:
+      - "${DOCKER_GID:?set DOCKER_GID in .env}"
+    environment:
+      OREO_HEARTBEAT_TOKEN: "${OREO_HEARTBEAT_TOKEN:?set OREO_HEARTBEAT_TOKEN in .env}"
+      OREO_NTFY_URL: "${OREO_NTFY_URL:-}"
+      OREO_NTFY_TOKEN: "${OREO_NTFY_TOKEN:-}"
+      OREO_DISK_PATHS: /host
+    ports:
+      - "${OREO_BIND_IP:-0.0.0.0}:8787:8787"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/host:ro
