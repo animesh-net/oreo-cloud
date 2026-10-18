@@ -12,3 +12,7 @@ The external 5-minute monitor lives in the public repository `oreo-monitor`.
 ## Changes
 
 `main` is protected. Every change goes through a pull request and is squash-merged by the owner.
+
+## License
+
+Copyright © 2026 Animesh Singh. Released under the [MIT License](LICENSE).
