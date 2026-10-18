@@ -38,6 +38,37 @@ Configuration comes from environment variables:
 
 The heartbeat is meant to be reached only over Tailscale: don't forward its port on the router, and allow only `oreo-monitor`'s tag to reach it in the tailnet's access rules.
 
+## Deployment
+
+Every push to `main` builds a `linux/arm64` image on GitHub's native ARM runners and publishes it as `ghcr.io/animesh-org/oreo-cloud:latest` (plus a `sha-<commit>` tag). Before anything is published, the workflow runs the integration tests in `tests/integration/` against the freshly built image; pull requests build and test the image without publishing it.
+
+On the Pi:
+
+```bash
+git clone https://github.com/animesh-org/oreo-cloud && cd oreo-cloud
+cp .env.example .env    # fill in DOCKER_GID, OREO_HEARTBEAT_TOKEN, OREO_NTFY_URL, OREO_BIND_IP
+docker compose up -d
+```
+
+`compose.yaml` runs `oreo heartbeat` as the non-root `oreo` user, with:
+
+- the Docker socket mounted read-only and the socket's group added (`DOCKER_GID`), so `health` can list containers;
+- the host's root filesystem mounted read-only at `/host`, so `system` checks the Pi's disk rather than the container's;
+- hostname `oreo-cloud`, so heartbeat reports and alerts name the Pi;
+- port `8787` published on `OREO_BIND_IP` (set it to `tailscale ip -4` to keep the heartbeat off the LAN);
+- `OREO_HEARTBEAT_TOKEN` required, so it refuses to start without one.
+
+Read-only mounting stops writes to the socket file, not Docker API calls: anything that can reach the socket can control Docker. Only `oreo` gets it.
+
+Run any other command in a one-off container, for example from cron:
+
+```bash
+docker compose run --rm oreo system --notify
+docker compose run --rm oreo health --notify
+```
+
+Update to the latest image with `docker compose pull && docker compose up -d`.
+
 ## Development
 
 ```bash
@@ -53,6 +84,15 @@ pre-commit install
 | pre-commit | ruff lint (with fixes) and format, whitespace and end-of-file fixes, YAML/TOML syntax, merge-conflict markers, large files, private keys, and a block on committing to `main` |
 | commit-msg | `scripts/check_commit_msg.py`: one line, capitalised, at most 72 characters, no WIP, no AI attribution |
 | pre-push | `pytest` |
+
+### Integration tests
+
+`tests/integration/test_image.py` runs the built image the way `compose.yaml` does on the Pi and checks that it runs as the non-root `oreo` user with access to Docker, that `/heartbeat` rejects missing or wrong tokens, reports a stopped container with `503` and recovers to `200`, that the container's own health check stays healthy while checks fail, that one-off `health` and `system` runs work, and that `compose.yaml` refuses to start without its required `.env` values. They need Docker and are skipped unless `OREO_IMAGE` is set:
+
+```bash
+docker build -t oreo-cloud:test .
+OREO_IMAGE=oreo-cloud:test pytest tests/integration -v
+```
 
 Run every check by hand with `pre-commit run --all-files`. CI runs the same hooks plus the commit-message check on every commit and the title of each pull request.
 
