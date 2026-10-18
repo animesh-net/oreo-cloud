@@ -147,14 +147,21 @@ def test_one_off_system_checks_host_disk():
     assert names == ["disk /host", "memory", "temperature", "load"]
 
 
-def test_compose_requires_env_values():
-    env = {k: v for k, v in os.environ.items() if k not in ("DOCKER_GID", "OREO_HEARTBEAT_TOKEN")}
+REQUIRED_ENV = {"DOCKER_GID": "996", "OREO_HEARTBEAT_TOKEN": "x"}
+
+
+# One variable missing at a time: with several missing, compose reports
+# whichever it interpolates first, and that order is not stable.
+@pytest.mark.parametrize("missing", REQUIRED_ENV)
+def test_compose_requires_env_values(missing):
+    env = {**os.environ, **REQUIRED_ENV}
+    del env[missing]
     result = subprocess.run(
         ["docker", "compose", "-f", ROOT / "compose.yaml", "config"],
         capture_output=True, text=True, env=env,
     )  # fmt: skip
     assert result.returncode != 0
-    assert "set DOCKER_GID in .env" in result.stderr
+    assert f"set {missing} in .env" in result.stderr
 
 
 def test_compose_binds_heartbeat_to_bind_ip():
