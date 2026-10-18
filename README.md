@@ -9,6 +9,37 @@ Everything that runs on the oreo-cloud Raspberry Pi 5 home server, kept under ve
 
 The external 5-minute monitor lives in the public repository `oreo-monitor`.
 
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `oreo notify MESSAGE [--title] [--priority] [--tags]` | Sends a push notification through ntfy. |
+| `oreo health [--json] [--notify]` | Fails if any Docker container is not running or reports `unhealthy`. Containers labelled `oreo.ignore=true` are skipped. |
+| `oreo system [--json] [--notify]` | Fails if disk, memory, CPU temperature or load is over its threshold. |
+
+Checks exit `0` when everything passes and `1` when anything fails. `--notify` sends one ntfy alert listing the failures.
+
+Configuration comes from environment variables:
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `OREO_NTFY_URL` | none, required for alerts | ntfy topic URL, e.g. `https://ntfy.sh/<topic>` |
+| `OREO_NTFY_TOKEN` | none | ntfy access token, if the topic is protected |
+| `OREO_DOCKER_SOCKET` | `/var/run/docker.sock` | Docker socket for `health` |
+| `OREO_DISK_PATHS` | `/` | `system`, comma-separated mount points |
+| `OREO_DISK_MAX_PERCENT` | `90` | `system` |
+| `OREO_MEMORY_MAX_PERCENT` | `90` | `system` |
+| `OREO_TEMPERATURE_MAX_C` | `75` | `system` |
+| `OREO_LOAD_MAX_PER_CPU` | `2` | `system`, 1-minute load average per CPU |
+
+## Development
+
+```bash
+python3 -m venv .venv && . .venv/bin/activate
+pip install -e ".[dev]"
+ruff check . && ruff format --check . && pytest
+```
+
 ## Changes
 
 `main` is protected. Every change goes through a pull request and is squash-merged by the owner.
