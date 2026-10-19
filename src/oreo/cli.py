@@ -2,11 +2,10 @@
 
 import argparse
 import json
-import socket
 import sys
 from collections.abc import Callable
 
-from oreo import __version__, health, heartbeat, notify, system
+from oreo import __version__, alerts, health, heartbeat, notify, system
 from oreo.checks import Check, all_ok
 
 
@@ -18,22 +17,17 @@ def _report(checks: list[Check], as_json: bool) -> None:
         print(f"{'OK  ' if check.ok else 'FAIL'}  {check.name}: {check.detail}")
 
 
-def _alert(title: str, checks: list[Check]) -> None:
-    failures = "\n".join(f"{c.name}: {c.detail}" for c in checks if not c.ok)
-    notify.send(failures, title=f"{socket.gethostname()}: {title}", priority="high", tags="warning")
-
-
-def _run_checks(run: Callable[[], list[Check]], title: str, args: argparse.Namespace) -> int:
+def _run_checks(
+    run: Callable[[], list[Check]], key: str, label: str, args: argparse.Namespace
+) -> int:
     checks = run()
     _report(checks, args.json)
-    if all_ok(checks):
-        return 0
     if args.notify:
         try:
-            _alert(title, checks)
-        except notify.NotifyError as error:
+            alerts.notify_on_change(key, label, checks)
+        except (notify.NotifyError, OSError) as error:
             print(f"oreo: {error}", file=sys.stderr)
-    return 1
+    return 0 if all_ok(checks) else 1
 
 
 def _cmd_notify(args: argparse.Namespace) -> int:
@@ -46,11 +40,11 @@ def _cmd_notify(args: argparse.Namespace) -> int:
 
 
 def _cmd_health(args: argparse.Namespace) -> int:
-    return _run_checks(health.run, "container health check failed", args)
+    return _run_checks(health.run, "health", "Containers", args)
 
 
 def _cmd_system(args: argparse.Namespace) -> int:
-    return _run_checks(system.run, "system check failed", args)
+    return _run_checks(system.run, "system", "System checks", args)
 
 
 def _cmd_heartbeat(args: argparse.Namespace) -> int:
@@ -78,7 +72,9 @@ def build_parser() -> argparse.ArgumentParser:
     ):
         cmd = commands.add_parser(name, help=help_text)
         cmd.add_argument("--json", action="store_true", help="print results as JSON")
-        cmd.add_argument("--notify", action="store_true", help="send an ntfy alert on failure")
+        cmd.add_argument(
+            "--notify", action="store_true", help="alert via ntfy when the result changes"
+        )
         cmd.set_defaults(handler=handler)
 
     heartbeat_cmd = commands.add_parser(

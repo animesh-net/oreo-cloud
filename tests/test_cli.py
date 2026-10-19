@@ -10,7 +10,8 @@ FAILING = [Check("disk /", False, "95% used"), Check("memory", True, "50% used")
 
 
 @pytest.fixture
-def alerts(monkeypatch):
+def alerts(monkeypatch, tmp_path):
+    monkeypatch.setenv("OREO_STATE_DIR", str(tmp_path))
     sent = []
     monkeypatch.setattr(notify, "send", lambda message, **kwargs: sent.append((message, kwargs)))
     return sent
@@ -40,8 +41,25 @@ def test_notify_flag_alerts_only_failures(monkeypatch, alerts):
     monkeypatch.setattr(system, "run", lambda: FAILING)
     cli.main(["system", "--notify"])
     [(message, kwargs)] = alerts
-    assert message == "disk /: 95% used"
+    assert message == "⚠️ System checks: 1 problem\ndisk /: 95% used"
+    assert kwargs["title"] == "Oreo Cloud NEEDS ATTENTION"
     assert kwargs["priority"] == "high"
+
+
+def test_notify_flag_alerts_once_while_failing(monkeypatch, alerts):
+    monkeypatch.setattr(system, "run", lambda: FAILING)
+    cli.main(["system", "--notify"])
+    cli.main(["system", "--notify"])
+    assert len(alerts) == 1
+
+
+def test_notify_flag_reports_recovery(monkeypatch, alerts):
+    monkeypatch.setattr(system, "run", lambda: FAILING)
+    cli.main(["system", "--notify"])
+    monkeypatch.setattr(system, "run", lambda: PASSING)
+    assert cli.main(["system", "--notify"]) == 0
+    assert alerts[-1][0].startswith("✅ System checks: back to normal")
+    assert alerts[-1][1]["title"] == "Oreo Cloud OK"
 
 
 def test_notify_flag_silent_when_passing(monkeypatch, alerts):
@@ -50,7 +68,9 @@ def test_notify_flag_silent_when_passing(monkeypatch, alerts):
     assert alerts == []
 
 
-def test_failed_alert_still_reports_check_failure(monkeypatch, capsys):
+def test_failed_alert_still_reports_check_failure(monkeypatch, capsys, tmp_path):
+    monkeypatch.setenv("OREO_STATE_DIR", str(tmp_path))
+
     def fail(message, **kwargs):
         raise notify.NotifyError("OREO_NTFY_URL is not set")
 

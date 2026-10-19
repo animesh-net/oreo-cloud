@@ -10,7 +10,8 @@ COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 RUN pip install . && rm -rf /app
 
-RUN useradd --system --uid 10001 --no-create-home oreo
+RUN useradd --system --uid 10001 --no-create-home oreo \
+    && mkdir -p /var/lib/oreo && chown oreo /var/lib/oreo
 USER oreo
 
 EXPOSE 8787
