@@ -67,7 +67,8 @@ services:
         max-size: 10m
         max-file: "3"
     environment:
-      OREO_NTFY_URL: "${OREO_NTFY_URL:-}"
+      # The agent is what sends alerts, so it refuses to start without somewhere to send them.
+      OREO_NTFY_URL: "${OREO_NTFY_URL:?set OREO_NTFY_URL in .env}"
       OREO_NTFY_TOKEN: "${OREO_NTFY_TOKEN:-}"
       OREO_DISK_PATHS: /,/host/mnt/data-hot-ssd1
       OREO_MOUNT_PATHS: /host/mnt/data-hot-ssd1
