@@ -1,6 +1,6 @@
 """The backup against a real restic and a real repository, to catch command-line and output
-mistakes that the faked restic in test_backup.py cannot. Skipped where restic is missing;
-CI installs it."""
+mistakes that the faked restic in test_backup.py cannot. Skipped where restic is missing,
+except in CI, which installs it and sets OREO_REQUIRE_RESTIC."""
 
 import json
 import os
@@ -13,6 +13,9 @@ import pytest
 from oreo import backup, clock, drives, net, storage
 from oreo.checks import Check
 
+if shutil.which("restic") is None and os.environ.get("OREO_REQUIRE_RESTIC"):
+    # CI sets this, so a missing restic fails the run instead of quietly skipping the test.
+    raise RuntimeError("OREO_REQUIRE_RESTIC is set but restic is not installed")
 pytestmark = pytest.mark.skipif(shutil.which("restic") is None, reason="restic not installed")
 
 NIGHT = datetime(2026, 10, 18, 22, 0, tzinfo=UTC)  # 03:30 Monday in Asia/Kolkata
