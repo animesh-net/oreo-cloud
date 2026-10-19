@@ -44,5 +44,53 @@ services:
         bind:
           propagation: rslave
 
+  # Runs the recurring jobs (network watchdog, container and system checks). It has root on the
+  # host so `oreo net` can renew the lease and restart Wi-Fi, so it publishes no port and
+  # runs no code except this image's.
+  agent:
+    image: ghcr.io/animesh-net/oreo-cloud:latest
+    command: ["agent"]
+    container_name: oreo-agent
+    hostname: oreo-cloud
+    restart: unless-stopped
+    init: true
+    user: root
+    privileged: true
+    pid: host
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    environment:
+      OREO_NTFY_URL: "${OREO_NTFY_URL:-}"
+      OREO_NTFY_TOKEN: "${OREO_NTFY_TOKEN:-}"
+      OREO_DISK_PATHS: /,/host/mnt/data-hot-ssd1
+      OREO_MOUNT_PATHS: /host/mnt/data-hot-ssd1
+    healthcheck:
+      # The agent touches this file every 15 seconds; stale means the loop has stopped.
+      test:
+        - CMD
+        - python
+        - -c
+        - import os, sys, time; sys.exit(time.time() - os.path.getmtime('/var/lib/oreo/agent.alive') > 120)
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    volumes:
+      - oreo-state:/var/lib/oreo
+      - /var/run/docker.sock:/var/run/docker.sock
+      - type: bind
+        source: /mnt
+        target: /host/mnt
+        read_only: true
+        bind:
+          propagation: rslave
+
 volumes:
   oreo-state:

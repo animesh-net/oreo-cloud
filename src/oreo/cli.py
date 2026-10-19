@@ -6,7 +6,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 
-from oreo import __version__, alerts, health, heartbeat, net, notify, system
+from oreo import __version__, alerts, health, heartbeat, net, notify, scheduler, system
 from oreo.checks import Check, all_ok
 
 
@@ -58,6 +58,11 @@ def _cmd_net(args: argparse.Namespace) -> int:
     return 0 if reachable else 1
 
 
+def _cmd_agent(args: argparse.Namespace) -> int:
+    scheduler.serve()
+    return 0
+
+
 def _cmd_heartbeat(args: argparse.Namespace) -> int:
     heartbeat.serve(args.host, args.port)
     return 0
@@ -87,6 +92,13 @@ def build_parser() -> argparse.ArgumentParser:
             "--notify", action="store_true", help="alert via ntfy when the result changes"
         )
         cmd.set_defaults(handler=handler)
+
+    agent_cmd = commands.add_parser(
+        "agent",
+        help="run the recurring jobs (net, health, system) in the foreground; "
+        "needs the privileged agent service",
+    )
+    agent_cmd.set_defaults(handler=_cmd_agent)
 
     net_cmd = commands.add_parser(
         "net",
