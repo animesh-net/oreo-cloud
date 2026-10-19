@@ -47,28 +47,41 @@ This is how they look, from top to bottom: a nightly report, a container problem
 
 ## Set up on the Pi
 
-You need a GitHub token with only the `read:packages` permission, so the Pi can pull the private image.
+Every command is one line, so each can be pasted on its own from a phone.
 
-1. Get the files and log in to the image registry:
+1. Log in to the image registry with a **classic** GitHub token that has only `read:packages` (fine-grained tokens cannot read packages). Docker keeps the login, so this is needed once per token:
 
    ```bash
-   gh repo clone animesh-net/oreo-cloud && cd oreo-cloud
    echo "<token>" | docker login ghcr.io -u animesh-net --password-stdin
    ```
 
-2. Create `.env` and fill in the four required values. The comments in the file say where each one comes from.
+2. Clone with a read-only deploy key, so `git pull` works later without a password. Make the key, add the `.pub` line under this repository's Settings, then Deploy keys, with write access off, then clone:
 
    ```bash
-   cp .env.example .env && chmod 600 .env && nano .env
+   ssh-keygen -t ed25519 -f ~/.ssh/oreo_cloud_deploy -N "" -C oreo-cloud-pi
+   cat ~/.ssh/oreo_cloud_deploy.pub
+   git clone -c core.sshCommand="ssh -i ~/.ssh/oreo_cloud_deploy -o IdentitiesOnly=yes" git@github.com:animesh-net/oreo-cloud.git ~/oreo-cloud
    ```
 
-3. Start it:
+3. Create `.env` and fill in the four required values. These lines do it without showing the token on screen; the last one assumes the old alert file `/etc/oreo/alert.env`, otherwise set `OREO_NTFY_URL` with `nano .env`:
 
    ```bash
-   docker compose up -d
+   cd ~/oreo-cloud && cp .env.example .env && chmod 600 .env
+   sed -i "s|^DOCKER_GID=.*|DOCKER_GID=$(stat -c %g /var/run/docker.sock)|" .env
+   sed -i "s|^OREO_BIND_IP=.*|OREO_BIND_IP=$(tailscale ip -4)|" .env
+   sed -i "s|^OREO_HEARTBEAT_TOKEN=.*|OREO_HEARTBEAT_TOKEN=$(openssl rand -hex 32)|" .env
+   sed -i "s|^OREO_NTFY_URL=.*|OREO_NTFY_URL=$(sudo grep -oP '^NTFY_URL=\K.*' /etc/oreo/alert.env | tr -d "\"'")|" .env
    ```
 
-4. Check it. Both containers should say `healthy` within a minute, and the two commands should match the last nightly report.
+   To copy a value to the phone, for example the heartbeat token for `oreo-monitor`, send it to yourself and delete the message afterwards: `docker compose run --rm agent notify "$(grep ^OREO_HEARTBEAT_TOKEN= .env | cut -d= -f2)"`.
+
+4. Start it:
+
+   ```bash
+   docker compose pull && docker compose up -d
+   ```
+
+5. Check it. Both containers should say `healthy` within a minute, and the two commands should match the last nightly report.
 
    ```bash
    docker ps
@@ -76,17 +89,19 @@ You need a GitHub token with only the `read:packages` permission, so the Pi can 
    docker compose run --rm agent drives
    ```
 
-5. Run one backup by hand. The first one takes longer.
+6. Run one backup by hand. The first one takes longer.
 
    ```bash
    docker compose run --rm agent backup
    ```
 
-6. Turn off the old host timers. Until you do, the agent leaves the network repairs and the backup to them and sends one alert reminding you.
+7. Turn off the old host timers. Until you do, the agent leaves the network repairs and the backup to them and sends one alert reminding you.
 
    ```bash
    sudo systemctl disable --now oreo-osbackup.timer oreo-netwatch.timer
    ```
+
+8. After a week of clean nightly reports, delete the old scripts from `/usr/local/bin` and their timer and service files.
 
 ## Everyday use
 
