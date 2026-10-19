@@ -141,9 +141,10 @@ def run_once(
                 _save({})  # the daily router restart, over before the window closed
                 return True
             minutes = max(1, round((now - since).total_seconds() / 60))
+            unit = "minute" if minutes == 1 else "minutes"
             recovery = state.get("action") or "none needed, it came back by itself"
             send(
-                f"✅ Network: back online after about {minutes} minutes "
+                f"✅ Network: back online after about {minutes} {unit} "
                 f"(down from {clock(since)}, back at {clock(now)})\n"
                 f"🔧 Recovery: {recovery}\n"
                 f"📶 Wi-Fi address: {_address(run, interface)}",

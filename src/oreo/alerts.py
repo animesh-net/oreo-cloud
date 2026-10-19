@@ -57,7 +57,7 @@ def _problem_message(label: str, failures: list[Check]) -> str:
 def _recovery_message(label: str, since: datetime, now: datetime) -> str:
     minutes = max(1, round((now - since).total_seconds() / 60))
     return (
-        f"✅ {label}: back to normal after about {minutes} minutes "
+        f"✅ {label}: back to normal after about {minutes} minute{'' if minutes == 1 else 's'} "
         f"(problem from {clock(since)}, resolved at {clock(now)})"
     )
 

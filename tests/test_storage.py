@@ -93,3 +93,13 @@ def test_summary_matches_the_nightly_report():
     assert storage.summary(bad) == (
         "❌ Storage: /mnt/osbackup not mounted; / 93% full; 2 disk error messages in the system log"
     )
+
+
+def test_unreadable_mount_fails_instead_of_crashing(mounts, monkeypatch):
+    def denied(path):
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(storage.shutil, "disk_usage", denied)
+    check = storage.check_mount("/", mounts)
+    assert not check.ok
+    assert check.detail.startswith("cannot read it")

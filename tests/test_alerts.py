@@ -118,3 +118,9 @@ def test_a_leftover_temporary_file_does_not_block_saving(sent, state_dir):
     run(sent, DISK_FAIL)
     assert json.loads((state_dir / "system.json").read_text())["failing"] == ["disk /"]
     assert [p.name for p in state_dir.iterdir() if p.suffix == ".tmp"] == ["system.tmp"]
+
+
+def test_one_minute_is_singular(sent):
+    run(sent, DISK_FAIL)
+    run(sent, PASSING, minutes=1)
+    assert "after about 1 minute (" in sent[-1][0]

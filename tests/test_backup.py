@@ -111,7 +111,7 @@ def test_report_matches_the_nightly_message(pi, sent):
     assert message == (
         "✅ System settings: 6 of 6 folders saved (4210 files, 3 new, 12 changed), "
         "30 versions kept\n"
-        "✅ Immich database: 2K dump, copied to flash drive and verified, 1 copies kept\n"
+        "✅ Immich database: 2K dump, copied to flash drive and verified, 1 copy kept\n"
         "✅ Data (Hot Tier | data-hot-ssd1): healthy\n"
         "✅ Storage: all drives mounted, none nearly full, no disk errors logged\n"
         "💾 Flash drive: 52G free"
