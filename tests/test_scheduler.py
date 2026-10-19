@@ -3,13 +3,13 @@ from oreo.scheduler import Job
 
 
 def make(log):
-    def job(name, every, fail=None):
+    def job(name, every, fail=None, needs_clock=True):
         def run():
             log.append(name)
             if fail:
                 raise fail
 
-        return Job(name, every, run)
+        return Job(name, every, run, needs_clock=needs_clock)
 
     return job
 
@@ -55,7 +55,36 @@ def test_unexpected_error_is_logged_not_raised():
 def test_default_jobs_cover_network_health_and_system():
     jobs = {job.name: job for job in scheduler.default_jobs(100)}
     assert {name: job.every for name, job in jobs.items()} == {
-        "net": 120, "health": 300, "system": 300,
+        "net": 120, "clock": 60, "health": 300, "system": 300,
     }  # fmt: skip
+    assert not jobs["net"].needs_clock
+    assert not jobs["clock"].needs_clock
+    assert jobs["health"].needs_clock and jobs["system"].needs_clock
     assert jobs["net"].next_due == 100
     assert jobs["health"].next_due > 100
+
+
+def test_unsynchronised_clock_holds_back_jobs_that_need_it():
+    ran, logged = [], []
+    new = make(ran)
+    jobs = [new("net", 120, needs_clock=False), new("health", 300)]
+    scheduler.run_due(jobs, 0, logged.append, clock_ok=lambda: False)
+    assert ran == ["net"]
+    assert logged == ["oreo agent: health held back, clock not synchronised"]
+    assert jobs[1].next_due == scheduler.CLOCK_RETRY_SECONDS
+    scheduler.run_due(jobs, 60, logged.append, clock_ok=lambda: True)
+    assert ran == ["net", "health"]
+
+
+def test_clock_is_asked_once_per_round_and_only_when_needed():
+    asked = []
+
+    def clock_ok():
+        asked.append(1)
+        return True
+
+    new = make([])
+    scheduler.run_due([new("net", 120, needs_clock=False)], 0, clock_ok=clock_ok)
+    assert asked == []
+    scheduler.run_due([new("health", 300), new("system", 300)], 0, clock_ok=clock_ok)
+    assert asked == [1]

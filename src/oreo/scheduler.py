@@ -9,9 +9,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from oreo import alerts, health, net, notify, system
+from oreo import alerts, clock, health, net, notify, system
 
 TICK_SECONDS = 15
+# A job that needs the clock waits this long before trying again while it is not synchronised.
+CLOCK_RETRY_SECONDS = 60
 ALIVE_FILE = "agent.alive"
 
 
@@ -21,6 +23,9 @@ class Job:
     every: float  # seconds between runs
     run: Callable[[], object]
     next_due: float = 0.0
+    # Jobs that time-stamp or schedule anything wait for a synchronised clock. The network
+    # watchdog does not: without network there is no clock sync, so it must run first.
+    needs_clock: bool = True
 
 
 def _check_job(key: str, label: str, run: Callable[[], list]) -> Callable[[], None]:
@@ -31,19 +36,43 @@ def _check_job(key: str, label: str, run: Callable[[], list]) -> Callable[[], No
 
 
 def default_jobs(start: float = 0.0) -> list[Job]:
-    """Network every 2 minutes, container and system checks every 5, staggered at start."""
+    """Network every 2 minutes, clock every minute, container and system checks every 5."""
     return [
-        Job("net", 120, net.run_once, start),
+        Job("net", 120, net.run_once, start, needs_clock=False),
+        Job(
+            "clock",
+            60,
+            _check_job("clock", "Clock", lambda: [clock.check()]),
+            start + 5,
+            needs_clock=False,
+        ),
         Job("health", 300, _check_job("health", "Containers", health.run), start + 10),
         Job("system", 300, _check_job("system", "System checks", system.run), start + 20),
     ]
 
 
-def run_due(jobs: list[Job], now: float, log: Callable[[str], None] = print) -> None:
-    """Run every job that is due. One failing job never stops the others."""
+def run_due(
+    jobs: list[Job],
+    now: float,
+    log: Callable[[str], None] = print,
+    clock_ok: Callable[[], bool] = lambda: True,
+) -> None:
+    """Run every job that is due. One failing job never stops the others.
+
+    A due job that needs the clock is held back while it is not synchronised, and tried
+    again CLOCK_RETRY_SECONDS later; the clock job alerts about it.
+    """
+    synced = None
     for job in jobs:
         if job.next_due > now:
             continue
+        if job.needs_clock:
+            if synced is None:
+                synced = clock_ok()
+            if not synced:
+                job.next_due = now + CLOCK_RETRY_SECONDS
+                log(f"oreo agent: {job.name} held back, clock not synchronised")
+                continue
         job.next_due = now + job.every
         try:
             job.run()
@@ -72,6 +101,6 @@ def serve(jobs: list[Job] | None = None) -> None:
         flush=True,
     )
     while not stop.is_set():
-        run_due(jobs, time.monotonic())
+        run_due(jobs, time.monotonic(), clock_ok=lambda: clock.check().ok)
         _touch_alive()
         stop.wait(TICK_SECONDS)
