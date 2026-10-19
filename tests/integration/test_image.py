@@ -229,6 +229,10 @@ def test_drives_runs_with_host_access():
     assert check == {"name": "Test drive", "ok": False, "detail": "drive not found"}
 
 
+def test_image_has_restic():
+    assert docker("run", "--rm", "--entrypoint", "restic", IMAGE, "version").returncode == 0
+
+
 def test_image_can_enter_host_namespaces():
     # `oreo net` runs the host's ip, ping, networkctl and netplan through nsenter.
     assert docker("run", "--rm", "--entrypoint", "nsenter", IMAGE, "--version").returncode == 0
@@ -291,3 +295,5 @@ def test_compose_agent_has_host_access_but_no_ports():
     assert agent["pid"] == "host"
     assert agent["user"] == "root"
     assert "ports" not in agent
+    sources = {v["target"] for v in agent["volumes"] if v.get("read_only")}
+    assert {"/host/etc", "/host/home/animesh", "/host/boot/firmware"} <= sources

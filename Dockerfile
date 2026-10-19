@@ -5,9 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# smartctl for `oreo drives`.
+# smartctl for `oreo drives`, restic for `oreo backup`.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends smartmontools \
+    && apt-get install -y --no-install-recommends smartmontools restic \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
