@@ -140,3 +140,51 @@ def test_host_commands_run_through_nsenter(monkeypatch):
     net.host_run(["netplan", "apply"])
     assert seen["argv"][:2] == ["nsenter", "--target"]
     assert seen["argv"][-2:] == ["netplan", "apply"]
+
+
+# START is 11:30 in Asia/Kolkata; the router restarts at 06:00 local, which is 00:30 UTC.
+ROUTER_RESTART = datetime(2026, 10, 19, 0, 30, tzinfo=UTC)
+
+
+def at(minutes):
+    return ROUTER_RESTART + timedelta(minutes=minutes)
+
+
+def test_quiet_window_defaults_to_the_router_restart():
+    assert net.in_quiet_window(at(0))
+    assert net.in_quiet_window(at(-5))
+    assert not net.in_quiet_window(at(15))
+    assert not net.in_quiet_window(START)
+
+
+def test_outage_inside_the_window_is_neither_repaired_nor_reported(sent):
+    host = FakeHost()
+    for minute in (0, 2, 4, 6, 8):
+        net.run_once(host, send=sent.append, now=at(minute))
+    host.gateway_up = True
+    net.run_once(host, send=sent.append, now=at(10))
+    assert host.repairs() == []
+    assert sent == []
+
+
+def test_outage_past_the_window_is_repaired_after_it_closes(sent):
+    host = FakeHost()
+    for minute in (10, 12, 14, 16, 18, 20):
+        net.run_once(host, send=lambda m, **k: sent.append(m), now=at(minute))
+    # 10, 12, 14 are inside the window; 16 and 18 are failures 1 and 2 after it
+    assert host.repairs() == ["networkctl", "netplan"]
+    host.gateway_up = True
+    net.run_once(host, send=lambda m, **k: sent.append(m), now=at(22))
+    assert "down from 06:10" in sent[0]
+
+
+def test_empty_quiet_window_disables_it(monkeypatch):
+    monkeypatch.setenv("OREO_NET_QUIET_WINDOW", "")
+    assert not net.in_quiet_window(at(0))
+
+
+def test_quiet_window_can_cross_midnight(monkeypatch):
+    monkeypatch.setenv("OREO_NET_QUIET_WINDOW", "23:50-00:10")
+    assert net.in_quiet_window(datetime(2026, 10, 19, 18, 25, tzinfo=UTC))  # 23:55 local
+    assert net.in_quiet_window(datetime(2026, 10, 19, 18, 35, tzinfo=UTC))  # 00:05 local
+    assert not net.in_quiet_window(datetime(2026, 10, 19, 18, 45, tzinfo=UTC))
