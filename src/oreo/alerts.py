@@ -40,7 +40,7 @@ def _save(path: Path, state: dict) -> None:
     temporary.replace(path)
 
 
-def _clock(moment: datetime) -> str:
+def clock(moment: datetime) -> str:
     zone = ZoneInfo(os.environ.get("OREO_TIMEZONE", DEFAULT_TIMEZONE))
     return moment.astimezone(zone).strftime("%H:%M")
 
@@ -55,7 +55,7 @@ def _recovery_message(label: str, since: datetime, now: datetime) -> str:
     minutes = max(1, round((now - since).total_seconds() / 60))
     return (
         f"✅ {label}: back to normal after about {minutes} minutes "
-        f"(problem from {_clock(since)}, resolved at {_clock(now)})"
+        f"(problem from {clock(since)}, resolved at {clock(now)})"
     )
 
 

@@ -175,6 +175,11 @@ def test_state_volume_is_writable_by_the_non_root_user():
         docker("volume", "rm", "-f", volume, check=False)
 
 
+def test_image_can_enter_host_namespaces():
+    # `oreo net` runs the host's ip, ping, networkctl and netplan through nsenter.
+    assert docker("run", "--rm", "--entrypoint", "nsenter", IMAGE, "--version").returncode == 0
+
+
 REQUIRED_ENV = {"DOCKER_GID": "996", "OREO_HEARTBEAT_TOKEN": "x"}
 
 

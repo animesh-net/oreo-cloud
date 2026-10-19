@@ -2,10 +2,11 @@
 
 import argparse
 import json
+import subprocess
 import sys
 from collections.abc import Callable
 
-from oreo import __version__, alerts, health, heartbeat, notify, system
+from oreo import __version__, alerts, health, heartbeat, net, notify, system
 from oreo.checks import Check, all_ok
 
 
@@ -47,6 +48,16 @@ def _cmd_system(args: argparse.Namespace) -> int:
     return _run_checks(system.run, "system", "System checks", args)
 
 
+def _cmd_net(args: argparse.Namespace) -> int:
+    try:
+        reachable = net.run_once()
+    except (notify.NotifyError, OSError, subprocess.SubprocessError) as error:
+        print(f"oreo: {error}", file=sys.stderr)
+        return 2
+    print("OK    gateway answers" if reachable else "FAIL  gateway does not answer")
+    return 0 if reachable else 1
+
+
 def _cmd_heartbeat(args: argparse.Namespace) -> int:
     heartbeat.serve(args.host, args.port)
     return 0
@@ -76,6 +87,13 @@ def build_parser() -> argparse.ArgumentParser:
             "--notify", action="store_true", help="alert via ntfy when the result changes"
         )
         cmd.set_defaults(handler=handler)
+
+    net_cmd = commands.add_parser(
+        "net",
+        help="check the gateway once and repair the connection if it is down "
+        "(needs the privileged agent service)",
+    )
+    net_cmd.set_defaults(handler=_cmd_net)
 
     heartbeat_cmd = commands.add_parser(
         "heartbeat", help="serve health and system results at /heartbeat for oreo-monitor"

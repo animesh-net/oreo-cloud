@@ -16,6 +16,7 @@ The external 5-minute monitor lives in the public repository `oreo-monitor`.
 | `oreo notify MESSAGE [--title] [--priority] [--tags]` | Sends a push notification through ntfy. |
 | `oreo health [--json] [--notify]` | Fails if any Docker container is not running or reports `unhealthy`. Containers labelled `oreo.ignore=true` are skipped. |
 | `oreo system [--json] [--notify]` | Fails if disk, memory, CPU temperature or load is over its threshold. |
+| `oreo net` | One network check: pings the default gateway on the host. After 2 failed checks in a row it renews the Wi-Fi address (`networkctl reconfigure`); after 3 it restarts Wi-Fi (`netplan apply`), then again every 5th failed check. While the network is down no alert can be sent, so the only message is "Oreo Cloud OK" once it is back, naming the fix and the Wi-Fi address. Exits `0` when the gateway answers, `1` when it does not, `2` when the host cannot be reached. Needs host access, see below. |
 | `oreo heartbeat [--host] [--port]` | Serves `GET /heartbeat` for `oreo-monitor`: runs `health` and `system` on each request and returns their results as JSON, with HTTP `200` when everything passes and `503` when anything fails. |
 
 Checks exit `0` when everything passes and `1` when anything fails. `--notify` sends an ntfy alert only when the result changes: "Oreo Cloud NEEDS ATTENTION" listing the failures when something starts failing (and again when the list of failures changes, or as a reminder every `OREO_ALERT_REMINDER_HOURS` while it keeps failing), and "Oreo Cloud OK" with how long it lasted when everything is back to normal. What is already failing is remembered in `OREO_STATE_DIR`, a named volume in `compose.yaml`; if sending fails, nothing is remembered, so the next run tries again.
@@ -29,6 +30,7 @@ Configuration comes from environment variables:
 | `OREO_STATE_DIR` | `/var/lib/oreo` | where `--notify` remembers what is already failing |
 | `OREO_ALERT_REMINDER_HOURS` | `6` | repeat the alert this often while a check keeps failing |
 | `OREO_TIMEZONE` | `Asia/Kolkata` | time zone for the times in alert messages |
+| `OREO_NET_INTERFACE` | `wlan0` | `net`, the Wi-Fi interface to renew |
 | `OREO_DOCKER_SOCKET` | `/var/run/docker.sock` | Docker socket for `health` |
 | `OREO_DISK_PATHS` | `/` | `system`, comma-separated paths to check |
 | `OREO_MOUNT_PATHS` | none | `system`, paths from `OREO_DISK_PATHS` that must be mount points; a path that is not mounted fails instead of reporting its parent's usage |
@@ -72,6 +74,13 @@ Private packages share the account's 500 MB of free storage, so after publishing
 - `OREO_HEARTBEAT_TOKEN` required, so it refuses to start without one.
 
 Read-only mounting stops writes to the socket file, not Docker API calls: anything that can reach the socket can control Docker. Only `oreo` gets it.
+
+`oreo net` runs the host's own `ip`, `ping`, `networkctl` and `netplan` by entering the host's namespaces with `nsenter`, so it needs a privileged container that shares the host's process namespace and runs as root. That is root on the Pi: give it only to a container that has no listening port, never to the heartbeat service. For example:
+
+```bash
+docker run --rm --privileged --pid=host --user root -v oreo-cloud_oreo-state:/var/lib/oreo \
+  --env-file .env ghcr.io/animesh-net/oreo-cloud:latest net
+```
 
 Run any other command in a one-off container, for example from cron:
 
