@@ -16,6 +16,7 @@ from oreo import (
     net,
     notify,
     scheduler,
+    sites,
     storage,
     system,
     update,
@@ -63,6 +64,10 @@ def _cmd_system(args: argparse.Namespace) -> int:
 
 def _cmd_storage(args: argparse.Namespace) -> int:
     return _run_checks(storage.run, "storage", "Storage", args)
+
+
+def _cmd_sites(args: argparse.Namespace) -> int:
+    return _run_checks(sites.run, "sites", "Websites", args)
 
 
 def _cmd_drives(args: argparse.Namespace) -> int:
@@ -133,6 +138,11 @@ def build_parser() -> argparse.ArgumentParser:
             _cmd_storage,
             "check every drive is mounted, writable, not nearly full and logs no disk errors "
             "(needs the privileged agent service)",
+        ),
+        (
+            "sites",
+            _cmd_sites,
+            "check each website answers through Caddy and its certificate is not expiring",
         ),
     ):
         cmd = commands.add_parser(name, help=help_text)

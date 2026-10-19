@@ -39,3 +39,5 @@ jobs:
         # tests/test_backup_restic.py runs the backup against a real repository.
         run: sudo apt-get update -q && sudo apt-get install -y -q restic
       - run: pytest
+        env:
+          OREO_REQUIRE_RESTIC: "1"
