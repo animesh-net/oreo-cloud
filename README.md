@@ -161,6 +161,7 @@ pytest
 - Pre-commit hooks lint and format the code, check each commit message (one line, capitalised, at most 72 characters, no extra trailers), block commits to `main` and run the tests before a push.
 - Every push to `main` builds the `linux/arm64` image, runs the integration tests in `tests/integration/` against it, scans it for critical vulnerabilities and publishes it to `ghcr.io/animesh-net/oreo-cloud`. Pull requests build and test it without publishing.
 - The integration tests need Docker: `docker build -t oreo-cloud:test . && OREO_IMAGE=oreo-cloud:test pytest tests/integration`.
+- To merge a Dependabot pull request, approve it and leave the merge button alone: the `Dependabot merge` workflow waits for the checks and squash-merges it with just its title, without the `Co-authored-by` and `Signed-off-by` lines GitHub's button would add.
 - Dependabot's commits are checked by title only: their bodies hold a changelog, and a squash merge keeps only the title.
 - Dependabot opens weekly pull requests for the pinned Actions, the base image and Python packages.
 
