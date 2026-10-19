@@ -3,8 +3,12 @@ name: PR description
 # Removes co-author, agent-session and "generated/requested by" lines from pull request
 # descriptions. It edits silently: it never fails and never comments. Edits made with
 # GITHUB_TOKEN do not start another run, so it cannot loop.
+# pull_request_target, so it also gets write access on Dependabot's pull requests, whose
+# pull_request runs only get a read-only token. That is safe here because nothing from the
+# pull request is ever run: the cleaner comes from main, and the description is only read
+# as text.
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, edited, reopened, synchronize]
 
 permissions:
