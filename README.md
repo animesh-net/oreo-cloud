@@ -26,7 +26,7 @@ Configuration comes from environment variables:
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `OREO_NTFY_URL` | none, required for alerts | ntfy topic URL, e.g. `https://ntfy.sh/<topic>` |
+| `OREO_NTFY_URL` | none, required for alerts | ntfy topic URL, e.g. `https://ntfy.sh/<topic>`; `compose.yaml` will not start the agent without it |
 | `OREO_NTFY_TOKEN` | none | ntfy access token, if the topic is protected |
 | `OREO_STATE_DIR` | `/var/lib/oreo` | where `--notify` remembers what is already failing |
 | `OREO_ALERT_REMINDER_HOURS` | `6` | repeat the alert this often while a check keeps failing |

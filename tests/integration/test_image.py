@@ -200,7 +200,11 @@ def test_image_can_enter_host_namespaces():
     assert docker("run", "--rm", "--entrypoint", "nsenter", IMAGE, "--version").returncode == 0
 
 
-REQUIRED_ENV = {"DOCKER_GID": "996", "OREO_HEARTBEAT_TOKEN": "x"}
+REQUIRED_ENV = {
+    "DOCKER_GID": "996",
+    "OREO_HEARTBEAT_TOKEN": "x",
+    "OREO_NTFY_URL": "https://ntfy.example/topic",
+}
 
 
 # One variable missing at a time: with several missing, compose reports
@@ -218,12 +222,7 @@ def test_compose_requires_env_values(missing):
 
 
 def test_compose_binds_heartbeat_to_bind_ip():
-    env = {
-        **os.environ,
-        "DOCKER_GID": "996",
-        "OREO_HEARTBEAT_TOKEN": "x",
-        "OREO_BIND_IP": "100.64.0.5",
-    }
+    env = {**os.environ, **REQUIRED_ENV, "OREO_BIND_IP": "100.64.0.5"}
     result = subprocess.run(
         ["docker", "compose", "-f", ROOT / "compose.yaml", "config", "--format", "json"],
         capture_output=True, text=True, env=env, check=True,
@@ -244,7 +243,7 @@ def test_compose_binds_heartbeat_to_bind_ip():
 
 
 def test_compose_agent_has_host_access_but_no_ports():
-    env = {**os.environ, "DOCKER_GID": "996", "OREO_HEARTBEAT_TOKEN": "x"}
+    env = {**os.environ, **REQUIRED_ENV}
     result = subprocess.run(
         ["docker", "compose", "-f", ROOT / "compose.yaml", "config", "--format", "json"],
         capture_output=True, text=True, env=env, check=True,
