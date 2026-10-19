@@ -16,6 +16,7 @@ from oreo import (
     net,
     notify,
     scheduler,
+    settings,
     sites,
     storage,
     system,
@@ -191,6 +192,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     net_cmd.set_defaults(handler=_cmd_net)
 
+    show_cmd = commands.add_parser(
+        "show",
+        help="print the compose.yaml or .env.example this image was built with, to set up "
+        "or refresh the Pi without git",
+    )
+    show_cmd.add_argument("file", choices=sorted(settings.FILES))
+    show_cmd.set_defaults(handler=_cmd_show)
+
     heartbeat_cmd = commands.add_parser(
         "heartbeat", help="serve health and system results at /heartbeat for oreo-monitor"
     )
@@ -201,6 +210,12 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _cmd_show(args: argparse.Namespace) -> int:
+    print(settings.shared(settings.FILES[args.file]).read_text(), end="")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
+    settings.load()
     args = build_parser().parse_args(argv)
     return args.handler(args)

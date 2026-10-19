@@ -3,4 +3,7 @@
 !README.md
 !LICENSE
 !src/
+!config/
+!compose.yaml
+!.env.example
 **/__pycache__
