@@ -12,10 +12,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.13"
       - run: pip install -e ".[dev]"
@@ -35,4 +35,7 @@ jobs:
           done
           printf '%s\n' "$PR_TITLE" | python scripts/check_commit_msg.py - || status=1
           exit $status
+      - name: Install restic
+        # tests/test_backup_restic.py runs the backup against a real repository.
+        run: sudo apt-get update -q && sudo apt-get install -y -q restic
       - run: pytest

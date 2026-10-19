@@ -1,0 +1,19 @@
+# Weekly pull requests that move the pinned versions forward: the GitHub Actions (pinned to
+# commit SHAs), the Python base image and the Python packages.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
