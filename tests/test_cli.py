@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from oreo import cli, health, notify, system
+from oreo import cli, health, net, notify, system
 from oreo.checks import Check
 
 PASSING = [Check("disk /", True, "40% used")]
@@ -94,3 +94,20 @@ def test_notify_command_error_exits_one(monkeypatch, capsys):
     monkeypatch.setattr(notify, "send", fail)
     assert cli.main(["notify", "hello"]) == 1
     assert "OREO_NTFY_URL is not set" in capsys.readouterr().err
+
+
+def test_net_command_exit_codes(monkeypatch, capsys):
+    monkeypatch.setattr(net, "run_once", lambda: True)
+    assert cli.main(["net"]) == 0
+    monkeypatch.setattr(net, "run_once", lambda: False)
+    assert cli.main(["net"]) == 1
+    assert "FAIL  gateway does not answer" in capsys.readouterr().out
+
+
+def test_net_command_reports_missing_host_access(monkeypatch, capsys):
+    def no_nsenter():
+        raise FileNotFoundError("nsenter")
+
+    monkeypatch.setattr(net, "run_once", no_nsenter)
+    assert cli.main(["net"]) == 2
+    assert "nsenter" in capsys.readouterr().err
