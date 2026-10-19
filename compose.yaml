@@ -4,22 +4,40 @@ services:
     container_name: oreo
     hostname: oreo-cloud
     restart: unless-stopped
+    # PID 1 ignores SIGTERM unless it handles it; init forwards it so stops are immediate.
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 100
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
     group_add:
       - "${DOCKER_GID:?set DOCKER_GID in .env}"
     environment:
       OREO_HEARTBEAT_TOKEN: "${OREO_HEARTBEAT_TOKEN:?set OREO_HEARTBEAT_TOKEN in .env}"
       OREO_NTFY_URL: "${OREO_NTFY_URL:-}"
       OREO_NTFY_TOKEN: "${OREO_NTFY_TOKEN:-}"
-      OREO_DISK_PATHS: /host,/host/mnt/data-hot-ssd1
+      OREO_DISK_PATHS: /,/host/mnt/data-hot-ssd1
       OREO_MOUNT_PATHS: /host/mnt/data-hot-ssd1
     ports:
       - "${OREO_BIND_IP:-0.0.0.0}:8787:8787"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      # rslave: drives mounted after the container starts show up under /host too.
+      # Only /mnt is shared, not the whole host. The container's own / sits on the NVMe,
+      # so "/" already reports its usage. rslave: drives mounted after the container
+      # starts show up under /host/mnt too.
       - type: bind
-        source: /
-        target: /host
+        source: /mnt
+        target: /host/mnt
         read_only: true
         bind:
           propagation: rslave
