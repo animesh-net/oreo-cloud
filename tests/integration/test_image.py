@@ -218,6 +218,17 @@ def test_storage_reads_the_hosts_mounts_with_host_access():
     assert "disk errors" in checks
 
 
+def test_drives_runs_with_host_access():
+    assert docker("run", "--rm", "--entrypoint", "smartctl", IMAGE, "--version").returncode == 0
+    result = docker(
+        "run", "--rm", "--privileged", "--pid", "host", "--user", "root",
+        "-e", "OREO_DRIVES=oreo-it-no-such-label=Test drive", IMAGE, "drives", "--json",
+        check=False,
+    )  # fmt: skip
+    [check] = json.loads(result.stdout)["checks"]
+    assert check == {"name": "Test drive", "ok": False, "detail": "drive not found"}
+
+
 def test_image_can_enter_host_namespaces():
     # `oreo net` runs the host's ip, ping, networkctl and netplan through nsenter.
     assert docker("run", "--rm", "--entrypoint", "nsenter", IMAGE, "--version").returncode == 0

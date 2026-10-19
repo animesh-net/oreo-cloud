@@ -9,6 +9,7 @@ from collections.abc import Callable
 from oreo import (
     __version__,
     alerts,
+    drives,
     health,
     heartbeat,
     net,
@@ -60,6 +61,20 @@ def _cmd_system(args: argparse.Namespace) -> int:
 
 def _cmd_storage(args: argparse.Namespace) -> int:
     return _run_checks(storage.run, "storage", "Storage", args)
+
+
+def _cmd_drives(args: argparse.Namespace) -> int:
+    checks = drives.run()
+    if args.json:
+        _report(checks, True)
+    else:
+        print("\n".join(drives.line(check) for check in checks))
+    if args.notify:
+        try:
+            alerts.notify_on_change("drives", "Drives", checks)
+        except (notify.NotifyError, OSError) as error:
+            print(f"oreo: {error}", file=sys.stderr)
+    return 0 if all_ok(checks) else 1
 
 
 def _cmd_net(args: argparse.Namespace) -> int:
@@ -119,6 +134,17 @@ def build_parser() -> argparse.ArgumentParser:
         "needs the privileged agent service",
     )
     agent_cmd.set_defaults(handler=_cmd_agent)
+
+    drives_cmd = commands.add_parser(
+        "drives",
+        help="SMART health, life left and free space of each drive "
+        "(needs the privileged agent service)",
+    )
+    drives_cmd.add_argument("--json", action="store_true", help="print results as JSON")
+    drives_cmd.add_argument(
+        "--notify", action="store_true", help="alert via ntfy when the result changes"
+    )
+    drives_cmd.set_defaults(handler=_cmd_drives)
 
     net_cmd = commands.add_parser(
         "net",
