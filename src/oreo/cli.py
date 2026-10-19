@@ -18,6 +18,7 @@ from oreo import (
     scheduler,
     storage,
     system,
+    update,
 )
 from oreo.checks import Check, all_ok
 
@@ -84,6 +85,10 @@ def _cmd_backup(args: argparse.Namespace) -> int:
     except notify.NotifyError as error:
         print(f"oreo: {error}", file=sys.stderr)
         return 2
+
+
+def _cmd_update(args: argparse.Namespace) -> int:
+    return 0 if update.run(args.action) else 1
 
 
 def _cmd_net(args: argparse.Namespace) -> int:
@@ -160,6 +165,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="run the nightly backup now and send its report (needs the privileged agent service)",
     )
     backup_cmd.set_defaults(handler=_cmd_backup)
+
+    update_cmd = commands.add_parser(
+        "update",
+        help="update Immich (database dump first) or Caddy, or remove unused images; "
+        "OS updates stay manual (needs the privileged agent service)",
+    )
+    update_cmd.add_argument("action", choices=sorted(update.ACTIONS))
+    update_cmd.set_defaults(handler=_cmd_update)
 
     net_cmd = commands.add_parser(
         "net",

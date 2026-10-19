@@ -177,7 +177,7 @@ def run(
     send = send or notify.send
     now = now or datetime.now(UTC)
     try:
-        with _locked(lock_timeout):
+        with storage_lock(lock_timeout):
             if not clock.check().ok:
                 raise BackupError("oreo backup: clock not synchronised, job skipped")
             mounts = storage.read_mounts()
@@ -202,7 +202,7 @@ def run(
     return True
 
 
-class _locked:
+class storage_lock:
     """Hold the storage lock the host's oreo-update also takes, so the two never overlap."""
 
     def __init__(self, timeout: float):
