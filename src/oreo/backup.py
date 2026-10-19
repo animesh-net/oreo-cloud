@@ -39,6 +39,9 @@ DUMPS = HOST / "mnt/data-hot-ssd1/library/backups"
 DUMP_COPIES = HOST / "mnt/osbackup/immich-db"
 LOCK_FILE = Path("/run/lock/oreo-storage.lock")  # shared with the host's oreo-update
 DUMP_MAX_AGE_HOURS = 36
+# Immich's own nightly dumps. `oreo update immich` saves pre-update-*.sql.gz in the same
+# folder; those are copied too but must not count as proof that Immich still dumps.
+IMMICH_DUMP_PREFIX = "immich-db-backup-"
 DUMP_KEEP_DAYS = 14
 DEFAULT_TIME = "03:30"
 LEGACY_TIMER = "oreo-osbackup.timer"
@@ -128,7 +131,8 @@ def _json_line(line: str) -> dict:
 
 def copy_database_dump(now: datetime) -> str:
     dumps = sorted(DUMPS.glob("*.sql.gz"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not dumps or now.timestamp() - dumps[0].stat().st_mtime > DUMP_MAX_AGE_HOURS * 3600:
+    own = [dump for dump in dumps if dump.name.startswith(IMMICH_DUMP_PREFIX)]
+    if not own or now.timestamp() - own[0].stat().st_mtime > DUMP_MAX_AGE_HOURS * 3600:
         raise BackupError(
             "osbackup: settings backup done, but DB dump problem: "
             f"no Immich database dump newer than {DUMP_MAX_AGE_HOURS} hours in "
@@ -145,7 +149,7 @@ def copy_database_dump(now: datetime) -> str:
             "osbackup: settings backup done, but DB dump problem: "
             f"copying the database dump to the flash drive failed: {error}"
         ) from error
-    newest = dumps[0]
+    newest = own[0]
     if (DUMP_COPIES / newest.name).stat().st_size != newest.stat().st_size:
         raise BackupError(
             "osbackup: settings backup done, but DB dump problem: "
