@@ -36,6 +36,13 @@ def wait_for(condition, timeout: float = 30) -> None:
     raise AssertionError("condition not met within timeout")
 
 
+# The same restrictions compose.yaml applies, so a change that needs more fails here.
+HARDENING = [
+    "--init", "--read-only", "--tmpfs", "/tmp", "--cap-drop", "ALL",
+    "--security-opt", "no-new-privileges:true",
+]  # fmt: skip
+
+
 def docker_args() -> list[str]:
     gid = str(os.stat(SOCKET).st_gid)
     return ["--group-add", gid, "-v", f"{SOCKET}:{SOCKET}:ro"]
@@ -60,8 +67,8 @@ def containers():
 def heartbeat(containers):
     name = containers(
         "run", "-d", "--hostname", "oreo-cloud", "--health-interval", "1s",
-        *docker_args(), "-v", "/:/host:ro",
-        "-e", f"OREO_HEARTBEAT_TOKEN={TOKEN}", "-e", "OREO_DISK_PATHS=/host",
+        *HARDENING, *docker_args(),
+        "-e", f"OREO_HEARTBEAT_TOKEN={TOKEN}",
         "-p", "127.0.0.1::8787", IMAGE,
     )  # fmt: skip
     port = docker("port", name, "8787/tcp").stdout.split(":")[-1].strip()
@@ -95,6 +102,13 @@ def test_runs_as_non_root_with_docker_group(heartbeat):
     assert str(os.stat(SOCKET).st_gid) in identity
 
 
+def test_stops_promptly_on_sigterm(heartbeat):
+    name, _ = heartbeat
+    started = time.monotonic()
+    docker("stop", "-t", "8", name)
+    assert time.monotonic() - started < 4
+
+
 def test_heartbeat_requires_token(heartbeat):
     _, get = heartbeat
     assert get(token=None)[0] == 401
@@ -110,7 +124,7 @@ def test_heartbeat_reports_stopped_container_then_recovers(heartbeat, containers
     assert body["host"] == "oreo-cloud"
     failing = {c["name"] for c in body["checks"] if not c["ok"]}
     assert failing == {f"container {stopped}"}
-    assert "disk /host" in {c["name"] for c in body["checks"]}
+    assert "disk /" in {c["name"] for c in body["checks"]}
 
     docker("rm", stopped)
     wait_for(lambda: get()[0] == 200)
@@ -178,7 +192,12 @@ def test_compose_binds_heartbeat_to_bind_ip():
     service = json.loads(result.stdout)["services"]["oreo"]
     assert service["ports"][0]["host_ip"] == "100.64.0.5"
     assert service["group_add"] == ["996"]
-    assert service["environment"]["OREO_DISK_PATHS"] == "/host,/host/mnt/data-hot-ssd1"
+    assert service["environment"]["OREO_DISK_PATHS"] == "/,/host/mnt/data-hot-ssd1"
     assert service["environment"]["OREO_MOUNT_PATHS"] == "/host/mnt/data-hot-ssd1"
-    [host_mount] = [v for v in service["volumes"] if v["target"] == "/host"]
-    assert host_mount["bind"]["propagation"] == "rslave"
+    [mnt] = [v for v in service["volumes"] if v["target"] == "/host/mnt"]
+    assert mnt["source"] == "/mnt"
+    assert mnt["bind"]["propagation"] == "rslave"
+    assert service["init"] is True
+    assert service["read_only"] is True
+    assert service["cap_drop"] == ["ALL"]
+    assert service["security_opt"] == ["no-new-privileges:true"]
