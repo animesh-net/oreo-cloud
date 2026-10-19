@@ -3,10 +3,12 @@ x-drives: &drives
   OREO_DISK_PATHS: /,/host/mnt/data-hot-ssd1
   OREO_MOUNT_PATHS: /host/mnt/data-hot-ssd1
 
-# Alert thresholds, for both services (the heartbeat reports the same checks). They are set
-# here rather than in .env so every change is reviewed in a pull request. CPU usage alerts only
-# once it has stayed over the limit for OREO_CPU_SUSTAINED_SECONDS.
+# Alert thresholds, for both services (the heartbeat reports the same checks), and how often a
+# problem that lasts is repeated. They are set here rather than in .env so every change is
+# reviewed in a pull request. CPU usage alerts only once it has stayed over the limit for
+# OREO_CPU_SUSTAINED_SECONDS.
 x-thresholds: &thresholds
+  OREO_ALERT_REMINDER_HOURS: "1"
   OREO_MEMORY_MAX_PERCENT: "50"
   OREO_CPU_MAX_PERCENT: "50"
   OREO_CPU_SUSTAINED_SECONDS: "120"
