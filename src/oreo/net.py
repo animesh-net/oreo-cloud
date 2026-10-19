@@ -12,6 +12,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, time
 from pathlib import Path
@@ -59,9 +60,11 @@ def _load() -> dict:
 def _save(state: dict) -> None:
     path = _state_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(state))
-    temporary.replace(path)
+    # A fresh temporary name each time: a fixed one left behind by the root agent could
+    # not be overwritten by the non-root heartbeat service.
+    with tempfile.NamedTemporaryFile("w", dir=path.parent, suffix=".tmp", delete=False) as file:
+        file.write(json.dumps(state))
+    Path(file.name).replace(path)
 
 
 def in_quiet_window(moment: datetime) -> bool:

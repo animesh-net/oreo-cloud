@@ -54,6 +54,12 @@ def default_jobs(start: float = 0.0) -> list[Job]:
         Job("system", 300, _check_job("system", "System checks", system.run), start + 20),
         Job("storage", 1800, _check_job("storage", "Storage", storage.run), start + 30),
         Job("backup", 60, backup.nightly, start + 40, background=True),
+        Job(
+            "backup-age",
+            1800,
+            _check_job("backup-age", "Backup", lambda: [backup.freshness_check()]),
+            start + 50,
+        ),
     ]
 
 

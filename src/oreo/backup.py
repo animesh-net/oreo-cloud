@@ -44,6 +44,11 @@ DUMP_MAX_AGE_HOURS = 36
 IMMICH_DUMP_PREFIX = "immich-db-backup-"
 DUMP_KEEP_DAYS = 14
 DEFAULT_TIME = "03:30"
+DEFAULT_MAX_AGE_HOURS = 26
+SEND_ATTEMPTS = 3
+SEND_RETRY_SECONDS = 30
+# A backup cut short (the agent restarted mid-run) is tried again once the same day.
+MAX_ATTEMPTS_PER_DAY = 2
 LEGACY_TIMER = "oreo-osbackup.timer"
 
 Runner = Callable[[Sequence[str]], subprocess.CompletedProcess]
@@ -103,6 +108,10 @@ def back_up_settings(run: Runner, now: datetime) -> str:
         _restic(
             run,
             "forget",
+            # By host only: the old host script's snapshots (/etc, ...) and these (/host/etc,
+            # ...) are then one group, so the old ones age out instead of staying forever.
+            "--group-by",
+            "host",
             "--keep-daily",
             "7",
             "--keep-weekly",
@@ -169,8 +178,49 @@ def _flash_free() -> str:
     return drives.human(shutil.disk_usage(HOST / FLASH_MOUNT.lstrip("/")).free)
 
 
-def _alert(message: str, send: Callable[..., None]) -> None:
-    send(message, title="Oreo Cloud FAILED", priority="high", tags="x")
+def _send(send: Callable[..., None], message: str, sleep=time.sleep, **kwargs) -> bool:
+    """Send, retrying a brief ntfy or network failure. Returns whether it was delivered."""
+    for attempt in range(SEND_ATTEMPTS):
+        try:
+            send(message, **kwargs)
+            return True
+        except notify.NotifyError as error:
+            print(f"oreo backup: {error}", flush=True)
+            if attempt + 1 < SEND_ATTEMPTS:
+                sleep(SEND_RETRY_SECONDS)
+    return False
+
+
+def _alert(message: str, send: Callable[..., None], sleep=time.sleep) -> None:
+    _send(send, message, sleep, title="Oreo Cloud FAILED", priority="high", tags="x")
+
+
+def _success_path() -> Path:
+    return Path(os.environ.get("OREO_STATE_DIR", alerts.DEFAULT_STATE_DIR)) / "backup-success.json"
+
+
+def _record_success(now: datetime) -> None:
+    path = _success_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"time": now.isoformat()}))
+
+
+def freshness_check(now: datetime | None = None, legacy: Check | None = None) -> Check:
+    """Fails when the agent's last successful backup is older than OREO_BACKUP_MAX_AGE_HOURS.
+    While the host's old timer still does the backups, there is nothing to check yet."""
+    now = now or datetime.now(UTC)
+    legacy = legacy or legacy_timer_check()
+    if not legacy.ok:
+        return Check("backup", True, "the host's oreo-osbackup.timer still runs the backup")
+    limit = float(os.environ.get("OREO_BACKUP_MAX_AGE_HOURS", DEFAULT_MAX_AGE_HOURS))
+    try:
+        last = datetime.fromisoformat(json.loads(_success_path().read_text())["time"])
+    except (FileNotFoundError, ValueError, KeyError):
+        return Check("backup", False, "no successful backup recorded by the agent yet")
+    hours = (now - last).total_seconds() / 3600
+    whole = round(hours)
+    detail = f"last successful backup {whole} hour{'' if whole == 1 else 's'} ago"
+    return Check("backup", hours <= limit, detail)
 
 
 def run(
@@ -179,6 +229,7 @@ def run(
     send: Callable[..., None] | None = None,
     now: datetime | None = None,
     lock_timeout: float = 3600,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> bool:
     """One backup. Sends the report or the failure alert; returns whether it succeeded."""
     send = send or notify.send
@@ -195,17 +246,21 @@ def run(
             settings = back_up_settings(run_cmd, now)
             database = copy_database_dump(now)
     except BackupError as error:
-        _alert(str(error), send)
+        _alert(str(error), send, sleep)
         return False
+    _record_success(now)
     health = [drives.line(check) for check in drives.run()]
     store = storage.summary(storage.run())
     report = "\n".join(
         [settings, database, *health, store, f"💾 Flash drive: {_flash_free()} free"]
     )
+    # The backup itself succeeded either way; a report that could not be sent is only logged.
     if "❌" in report or "⚠" in report:
-        send(report, title="Oreo Cloud NEEDS ATTENTION", priority="high", tags="warning")
+        _send(
+            send, report, sleep, title="Oreo Cloud NEEDS ATTENTION", priority="high", tags="warning"
+        )
     else:
-        send(report, title="Oreo Cloud OK", tags="white_check_mark")
+        _send(send, report, sleep, title="Oreo Cloud OK", tags="white_check_mark")
     return True
 
 
@@ -257,8 +312,9 @@ def _state_path() -> Path:
 
 def nightly(*, send: Callable[..., None] | None = None, now: datetime | None = None) -> None:
     """Run the backup once a day at OREO_BACKUP_TIME, or as soon as possible after it if
-    the Pi was off then, like the host timer's Persistent=true. A failed run is not retried
-    until the next day; its alert says what to fix."""
+    the Pi was off then, like the host timer's Persistent=true. A run that failed is not
+    retried until the next day (its alert says what to fix), but one that was cut short,
+    because the agent stopped mid-run, is tried once more."""
     now = now or datetime.now(UTC)
     legacy = legacy_timer_check()
     try:
@@ -275,12 +331,16 @@ def nightly(*, send: Callable[..., None] | None = None, now: datetime | None = N
         return
     path = _state_path()
     try:
-        last = json.loads(path.read_text()).get("last_run")
+        state = json.loads(path.read_text())
     except (FileNotFoundError, ValueError):
-        last = None
+        state = {}
     today = local.date().isoformat()
-    if last == today:
+    if state.get("date") == today and (
+        state.get("finished") or state.get("attempts", 0) >= MAX_ATTEMPTS_PER_DAY
+    ):
         return
+    attempts = state.get("attempts", 0) + 1 if state.get("date") == today else 1
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"last_run": today}))
+    path.write_text(json.dumps({"date": today, "finished": False, "attempts": attempts}))
     run(send=send, now=now)
+    path.write_text(json.dumps({"date": today, "finished": True, "attempts": attempts}))

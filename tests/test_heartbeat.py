@@ -134,3 +134,34 @@ def test_bind_fails_fast_on_other_errors(monkeypatch):
     monkeypatch.setattr(heartbeat, "make_server", in_use)
     with pytest.raises(OSError):
         heartbeat.make_server_when_ready("127.0.0.1", 8787, None, sleep=lambda s: None)
+
+
+def test_agent_check_is_off_unless_configured(monkeypatch):
+    monkeypatch.delenv("OREO_AGENT_ALIVE_FILE", raising=False)
+    assert heartbeat.agent_check() == []
+
+
+def test_agent_check_follows_the_alive_file(monkeypatch, tmp_path):
+    alive = tmp_path / "agent.alive"
+    monkeypatch.setenv("OREO_AGENT_ALIVE_FILE", str(alive))
+    [missing] = heartbeat.agent_check()
+    assert not missing.ok
+    alive.touch()
+    [fresh] = heartbeat.agent_check()
+    assert fresh.ok
+    [stale] = heartbeat.agent_check(now=alive.stat().st_mtime + 600)
+    assert stale.detail == "no sign of life for 10 minutes"
+
+
+def test_non_ascii_authorization_gets_401(checks):
+    server = start(token="secret")
+    try:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_address[1]}/heartbeat",
+            headers={"Authorization": "Bearer café"},
+        )
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(request, timeout=5)
+        assert error.value.code == 401
+    finally:
+        server.shutdown()

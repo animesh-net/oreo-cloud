@@ -109,3 +109,12 @@ def test_corrupt_state_is_treated_as_empty(sent, state_dir):
     (state_dir / "system.json").write_text("{not json")
     run(sent, DISK_FAIL)
     assert len(sent) == 1
+
+
+def test_a_leftover_temporary_file_does_not_block_saving(sent, state_dir):
+    leftover = state_dir / "system.tmp"
+    leftover.write_text("{}")
+    leftover.chmod(0o400)
+    run(sent, DISK_FAIL)
+    assert json.loads((state_dir / "system.json").read_text())["failing"] == ["disk /"]
+    assert [p.name for p in state_dir.iterdir() if p.suffix == ".tmp"] == ["system.tmp"]

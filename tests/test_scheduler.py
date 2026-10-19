@@ -55,7 +55,8 @@ def test_unexpected_error_is_logged_not_raised():
 def test_default_jobs_cover_network_health_and_system():
     jobs = {job.name: job for job in scheduler.default_jobs(100)}
     assert {name: job.every for name, job in jobs.items()} == {
-        "net": 120, "clock": 60, "health": 300, "system": 300, "storage": 1800, "backup": 60,
+        "net": 120, "clock": 60, "health": 300, "system": 300, "storage": 1800,
+        "backup": 60, "backup-age": 1800,
     }  # fmt: skip
     assert not jobs["net"].needs_clock
     assert not jobs["clock"].needs_clock
@@ -110,4 +111,4 @@ def test_background_job_runs_in_a_thread_and_does_not_overlap():
     scheduler.run_due([job], 120)
     job.thread.join(5)
     assert started == [1, 1]
-    assert scheduler.default_jobs()[-1].background
+    assert {j.name: j for j in scheduler.default_jobs()}["backup"].background

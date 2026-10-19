@@ -7,6 +7,7 @@ keeps failing, and one message when it is back to normal.
 
 import json
 import os
+import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,9 +36,11 @@ def _load(path: Path) -> dict:
 
 def _save(path: Path, state: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(state))
-    temporary.replace(path)
+    # A fresh temporary name each time: a fixed one left behind by the root agent could
+    # not be overwritten by the non-root heartbeat service.
+    with tempfile.NamedTemporaryFile("w", dir=path.parent, suffix=".tmp", delete=False) as file:
+        file.write(json.dumps(state))
+    Path(file.name).replace(path)
 
 
 def clock(moment: datetime) -> str:

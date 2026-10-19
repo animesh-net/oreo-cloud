@@ -11,14 +11,33 @@ from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from oreo import __version__, health, system
-from oreo.checks import all_ok
+from oreo.checks import Check, all_ok
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8787
+AGENT_STALE_SECONDS = 120
+
+
+def agent_check(now: float | None = None) -> list[Check]:
+    """Whether the agent is still alive, from the file it touches every 15 seconds.
+
+    Only when OREO_AGENT_ALIVE_FILE is set (compose sets it): a stopped or removed agent
+    container would otherwise show only as one stopped container, or not at all.
+    """
+    path = os.environ.get("OREO_AGENT_ALIVE_FILE")
+    if not path:
+        return []
+    try:
+        age = (now or time.time()) - os.path.getmtime(path)
+    except OSError:
+        return [Check("agent", False, "no sign of life from the agent yet")]
+    if age > AGENT_STALE_SECONDS:
+        return [Check("agent", False, f"no sign of life for {round(age / 60)} minutes")]
+    return [Check("agent", True, "running")]
 
 
 def report() -> dict:
-    checks = health.run() + system.run()
+    checks = health.run() + system.run() + agent_check()
     return {
         "ok": all_ok(checks),
         "host": socket.gethostname(),
@@ -36,8 +55,9 @@ def make_handler(token: str | None) -> type[BaseHTTPRequestHandler]:
             if self.path != "/heartbeat":
                 self._send(404, {"error": "not found"})
                 return
+            # Compared as bytes: compare_digest raises on non-ASCII text.
             if token and not hmac.compare_digest(
-                self.headers.get("Authorization", ""), f"Bearer {token}"
+                self.headers.get("Authorization", "").encode(), f"Bearer {token}".encode()
             ):
                 self._send(401, {"error": "unauthorized"})
                 return

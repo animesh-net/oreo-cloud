@@ -1,6 +1,33 @@
+# Shared by both services. When the HDDs are mounted, add them here once.
+x-drives: &drives
+  OREO_DISK_PATHS: /,/host/mnt/data-hot-ssd1
+  OREO_MOUNT_PATHS: /host/mnt/data-hot-ssd1
+
+# Only /mnt is shared, not the whole host. The container's own / sits on the NVMe, so "/"
+# already reports its usage. rslave: drives mounted after the container starts show up too.
+x-mnt: &mnt
+  type: bind
+  source: /mnt
+  target: /host/mnt
+  read_only: true
+  bind:
+    propagation: rslave
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+# Optional settings (time zone, backup time, thresholds, ...) come from .env as well; see
+# .env.example. Set OREO_IMAGE_TAG to a sha-<commit> tag to roll back.
+x-env-file: &env-file
+  - path: .env
+    required: false
+
 services:
   oreo:
-    image: ghcr.io/animesh-net/oreo-cloud:latest
+    image: ghcr.io/animesh-net/oreo-cloud:${OREO_IMAGE_TAG:-latest}
     container_name: oreo
     # Host network: the heartbeat binds the Tailscale address itself and waits for it at boot,
     # because Docker does not retry a container whose port binding failed to start.
@@ -17,39 +44,27 @@ services:
       - no-new-privileges:true
     pids_limit: 100
     mem_limit: 256m
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: "3"
+    logging: *logging
     group_add:
       - "${DOCKER_GID:?set DOCKER_GID in .env}"
+    env_file: *env-file
     environment:
+      <<: *drives
       OREO_HEARTBEAT_TOKEN: "${OREO_HEARTBEAT_TOKEN:?set OREO_HEARTBEAT_TOKEN in .env}"
       OREO_HEARTBEAT_HOST: "${OREO_BIND_IP:?set OREO_BIND_IP in .env}"
-      OREO_NTFY_URL: "${OREO_NTFY_URL:-}"
-      OREO_NTFY_TOKEN: "${OREO_NTFY_TOKEN:-}"
-      OREO_DISK_PATHS: /,/host/mnt/data-hot-ssd1
-      OREO_MOUNT_PATHS: /host/mnt/data-hot-ssd1
+      # The heartbeat fails when the agent stops touching this file.
+      OREO_AGENT_ALIVE_FILE: /var/lib/oreo/agent.alive
     volumes:
       # Alert state (what is already failing), so alerts are sent on change, not every run.
       - oreo-state:/var/lib/oreo
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      # Only /mnt is shared, not the whole host. The container's own / sits on the NVMe,
-      # so "/" already reports its usage. rslave: drives mounted after the container
-      # starts show up under /host/mnt too.
-      - type: bind
-        source: /mnt
-        target: /host/mnt
-        read_only: true
-        bind:
-          propagation: rslave
+      - *mnt
 
-  # Runs the recurring jobs (network watchdog, container and system checks). It has root on the
+  # Runs the recurring jobs (network watchdog, checks, nightly backup). It has root on the
   # host so `oreo net` can renew the lease and restart Wi-Fi, so it publishes no port and
   # runs no code except this image's.
   agent:
-    image: ghcr.io/animesh-net/oreo-cloud:latest
+    image: ghcr.io/animesh-net/oreo-cloud:${OREO_IMAGE_TAG:-latest}
     command: ["agent"]
     container_name: oreo-agent
     hostname: oreo-cloud
@@ -63,17 +78,12 @@ services:
       - /tmp
     # restic needs a few hundred MB while it backs up.
     mem_limit: 1g
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: "3"
+    logging: *logging
+    env_file: *env-file
     environment:
+      <<: *drives
       # The agent is what sends alerts, so it refuses to start without somewhere to send them.
       OREO_NTFY_URL: "${OREO_NTFY_URL:?set OREO_NTFY_URL in .env}"
-      OREO_NTFY_TOKEN: "${OREO_NTFY_TOKEN:-}"
-      OREO_DISK_PATHS: /,/host/mnt/data-hot-ssd1
-      OREO_MOUNT_PATHS: /host/mnt/data-hot-ssd1
     healthcheck:
       # The agent touches this file every 15 seconds; stale means the loop has stopped.
       test:
@@ -97,12 +107,7 @@ services:
       - /var/lib/tailscale:/host/var/lib/tailscale:ro
       - /boot/firmware:/host/boot/firmware:ro
       - /var/spool/cron:/host/var/spool/cron:ro
-      - type: bind
-        source: /mnt
-        target: /host/mnt
-        read_only: true
-        bind:
-          propagation: rslave
+      - *mnt
 
 volumes:
   oreo-state:

@@ -2,7 +2,7 @@ import json
 import os
 import subprocess
 from collections import namedtuple
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -249,3 +249,95 @@ def test_nightly_stands_aside_while_the_host_timer_is_active(pi, sent, monkeypat
     backup.nightly(send=lambda m, **k: sent.append(m), now=NIGHT)
     assert runs == []
     assert "sudo systemctl disable --now oreo-osbackup.timer" in sent[0]
+
+
+def test_prune_groups_old_and_new_snapshots_by_host(pi, sent):
+    sunday = datetime(2026, 10, 24, 22, 0, tzinfo=UTC)
+    dump = next((pi / "ssd/backups").iterdir())
+    os.utime(dump, (sunday.timestamp() - 60,) * 2)
+    _, restic = go(sent, now=sunday)
+    [forget] = [c for c in restic.commands if c[7] == "forget"]
+    assert forget[forget.index("--group-by") + 1] == "host"
+
+
+def test_report_is_retried_and_never_fails_a_good_backup(pi):
+    attempts, waits = [], []
+
+    def flaky(message, **kwargs):
+        attempts.append(message)
+        raise backup.notify.NotifyError("ntfy unreachable")
+
+    ok = backup.run(FakeRestic(), send=flaky, now=NIGHT, sleep=waits.append)
+    assert ok
+    assert len(attempts) == backup.SEND_ATTEMPTS
+    assert waits == [backup.SEND_RETRY_SECONDS] * (backup.SEND_ATTEMPTS - 1)
+
+
+def test_report_delivered_on_a_later_attempt(pi):
+    attempts = []
+
+    def second_time_lucky(message, **kwargs):
+        attempts.append(1)
+        if len(attempts) < 2:
+            raise backup.notify.NotifyError("ntfy unreachable")
+
+    assert backup.run(FakeRestic(), send=second_time_lucky, now=NIGHT, sleep=lambda s: None)
+    assert len(attempts) == 2
+
+
+def test_success_is_recorded_and_failure_is_not(pi, sent, monkeypatch):
+    go(sent)
+    recorded = json.loads((pi / "state/backup-success.json").read_text())["time"]
+    assert recorded == NIGHT.isoformat()
+    (pi / "state/backup-success.json").unlink()
+    monkeypatch.setattr(storage, "read_mounts", lambda: {"/": False})
+    go(sent)
+    assert not (pi / "state/backup-success.json").exists()
+
+
+def test_interrupted_backup_is_tried_once_more_the_same_day(pi, sent, monkeypatch):
+    runs = []
+    monkeypatch.setattr(net, "host_run", legacy(False))
+
+    def killed(**kwargs):
+        runs.append(1)
+        raise SystemExit("agent stopped mid-run")
+
+    monkeypatch.setattr(backup, "run", killed)
+    with pytest.raises(SystemExit):
+        backup.nightly(send=sent.append, now=NIGHT)
+    with pytest.raises(SystemExit):
+        backup.nightly(send=sent.append, now=NIGHT)
+    backup.nightly(send=sent.append, now=NIGHT)  # two attempts used up
+    assert runs == [1, 1]
+
+
+def test_finished_backup_is_not_repeated(pi, sent, monkeypatch):
+    runs = []
+    monkeypatch.setattr(net, "host_run", legacy(False))
+    monkeypatch.setattr(backup, "run", lambda **kwargs: runs.append(1) or False)
+    backup.nightly(send=sent.append, now=NIGHT)
+    backup.nightly(send=sent.append, now=NIGHT)
+    assert runs == [1]
+
+
+ACTIVE = Check("oreo-osbackup.timer", False, "still active")
+RETIRED = Check("oreo-osbackup.timer", True, "disabled")
+
+
+def test_freshness_passes_while_the_host_timer_still_backs_up(pi):
+    assert backup.freshness_check(NIGHT, ACTIVE).ok
+
+
+def test_freshness_fails_without_any_agent_backup(pi):
+    check = backup.freshness_check(NIGHT, RETIRED)
+    assert check == Check("backup", False, "no successful backup recorded by the agent yet")
+
+
+def test_freshness_after_a_backup(pi, sent):
+    go(sent)
+    later = NIGHT + timedelta(hours=1)
+    assert backup.freshness_check(later, RETIRED) == Check(
+        "backup", True, "last successful backup 1 hour ago"
+    )
+    assert not backup.freshness_check(NIGHT + timedelta(hours=27), RETIRED).ok

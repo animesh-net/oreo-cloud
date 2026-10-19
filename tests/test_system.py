@@ -60,12 +60,18 @@ def test_missing_temperature_sensor_passes(tmp_path):
     assert check.detail == "no sensor"
 
 
-def test_load_is_per_cpu(monkeypatch):
-    monkeypatch.setattr(system.os, "getloadavg", lambda: (6.0, 0, 0))
+def test_load_is_the_five_minute_average_per_cpu(monkeypatch):
+    monkeypatch.setattr(system.os, "getloadavg", lambda: (40.0, 6.0, 1.0))
     monkeypatch.setattr(system.os, "cpu_count", lambda: 4)
-    check = system.check_load(2)
-    assert check.ok
-    assert check.detail == "1.50 per CPU (1 min)"
+    check = system.check_load(3)
+    assert check.ok  # a 1-minute burst of 40 is ignored
+    assert check.detail == "1.50 per CPU (5 min)"
+
+
+def test_sustained_load_fails(monkeypatch):
+    monkeypatch.setattr(system.os, "getloadavg", lambda: (14.0, 13.0, 9.0))
+    monkeypatch.setattr(system.os, "cpu_count", lambda: 4)
+    assert not system.check_load(3).ok
 
 
 def test_run_checks_every_configured_disk(monkeypatch):
