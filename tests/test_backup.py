@@ -129,6 +129,26 @@ def test_dump_is_copied_and_old_copies_removed(pi, sent):
     assert copies == ["immich-db-backup-20261019T020000.sql.gz"]
 
 
+def test_pre_update_dump_does_not_count_as_a_fresh_immich_dump(pi, sent):
+    own = next((pi / "ssd/backups").iterdir())
+    os.utime(own, (NIGHT.timestamp() - 40 * 3600,) * 2)
+    pre_update = pi / "ssd/backups/pre-update-2026-10-19-0100.sql.gz"
+    pre_update.write_bytes(b"x" * 4096)
+    os.utime(pre_update, (NIGHT.timestamp() - 600,) * 2)
+    ok, _ = go(sent)
+    assert not ok
+    assert "no Immich database dump newer than 36 hours" in sent[0][0]
+
+
+def test_pre_update_dumps_are_copied_but_the_report_names_immichs_own(pi, sent):
+    pre_update = pi / "ssd/backups/pre-update-2026-10-19-0100.sql.gz"
+    pre_update.write_bytes(b"x" * 9000)
+    os.utime(pre_update, (NIGHT.timestamp() - 600,) * 2)
+    go(sent)
+    assert (pi / "flash/immich-db" / pre_update.name).exists()
+    assert "Immich database: 2K dump" in sent[0][0]
+
+
 def test_drive_problem_turns_the_report_into_needs_attention(pi, sent, monkeypatch):
     monkeypatch.setattr(
         drives, "run", lambda: [Check("Data", False, "NEEDS ATTENTION, status FAILED")]
