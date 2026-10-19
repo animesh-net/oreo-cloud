@@ -270,6 +270,8 @@ def test_compose_binds_heartbeat_to_bind_ip():
     assert service["network_mode"] == "host"
     assert "ports" not in service
     assert service["environment"]["OREO_HEARTBEAT_HOST"] == "100.64.0.5"
+    assert service["environment"]["OREO_AGENT_ALIVE_FILE"] == "/var/lib/oreo/agent.alive"
+    assert service["image"].endswith(":latest")
     assert service["group_add"] == ["996"]
     assert service["environment"]["OREO_DISK_PATHS"] == "/,/host/mnt/data-hot-ssd1"
     assert service["environment"]["OREO_MOUNT_PATHS"] == "/host/mnt/data-hot-ssd1"
@@ -297,3 +299,13 @@ def test_compose_agent_has_host_access_but_no_ports():
     assert "ports" not in agent
     sources = {v["target"] for v in agent["volumes"] if v.get("read_only")}
     assert {"/host/etc", "/host/home/animesh", "/host/boot/firmware"} <= sources
+
+
+def test_compose_image_tag_can_be_pinned_for_rollback():
+    env = {**os.environ, **REQUIRED_ENV, "OREO_IMAGE_TAG": "sha-abc1234"}
+    result = subprocess.run(
+        ["docker", "compose", "-f", ROOT / "compose.yaml", "config", "--format", "json"],
+        capture_output=True, text=True, env=env, check=True,
+    )  # fmt: skip
+    services = json.loads(result.stdout)["services"]
+    assert {s["image"] for s in services.values()} == {"ghcr.io/animesh-net/oreo-cloud:sha-abc1234"}

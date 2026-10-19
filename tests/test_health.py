@@ -56,3 +56,30 @@ def test_docker_error_is_reported(monkeypatch):
     monkeypatch.setattr(docker_api, "list_containers", fail)
     [check] = health.run()
     assert check.detail == "Docker API returned HTTP 500"
+
+
+def test_finished_one_off_run_is_skipped_but_a_running_one_is_checked():
+    one_off = {"com.docker.compose.oneoff": "True"}
+    containers = [
+        {
+            "Names": ["/oreo-cloud-agent-run-1"],
+            "State": "exited",
+            "Status": "Exited (0)",
+            "Labels": one_off,
+        },
+        {
+            "Names": ["/oreo-cloud-agent-run-2"],
+            "State": "running",
+            "Status": "Up 1 minute",
+            "Labels": one_off,
+        },
+    ]
+    [check] = health.check_containers(containers)
+    assert check.name == "container oreo-cloud-agent-run-2"
+
+
+def test_containers_without_labels_are_checked():
+    [check] = health.check_containers(
+        [{"Names": ["/x"], "State": "exited", "Status": "Exited (1)", "Labels": None}]
+    )
+    assert not check.ok

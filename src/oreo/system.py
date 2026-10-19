@@ -53,8 +53,10 @@ def check_temperature(
 
 
 def check_load(max_per_cpu: float) -> Check:
-    per_cpu = os.getloadavg()[0] / (os.cpu_count() or 1)
-    return Check("load", per_cpu <= max_per_cpu, f"{per_cpu:.2f} per CPU (1 min)")
+    # The 5-minute average, so a short burst (the backup, Immich's machine learning) is not
+    # reported as a problem.
+    per_cpu = os.getloadavg()[1] / (os.cpu_count() or 1)
+    return Check("load", per_cpu <= max_per_cpu, f"{per_cpu:.2f} per CPU (5 min)")
 
 
 def run() -> list[Check]:
@@ -64,5 +66,5 @@ def run() -> list[Check]:
     checks = [check_disk(path, disk_max, path in must_mount) for path in paths]
     checks.append(check_memory(_env_float("OREO_MEMORY_MAX_PERCENT", 90)))
     checks.append(check_temperature(_env_float("OREO_TEMPERATURE_MAX_C", 75)))
-    checks.append(check_load(_env_float("OREO_LOAD_MAX_PER_CPU", 2)))
+    checks.append(check_load(_env_float("OREO_LOAD_MAX_PER_CPU", 3)))
     return checks
