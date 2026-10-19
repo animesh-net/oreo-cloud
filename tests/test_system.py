@@ -60,25 +60,69 @@ def test_missing_temperature_sensor_passes(tmp_path):
     assert check.detail == "no sensor"
 
 
-def test_load_is_the_five_minute_average_per_cpu(monkeypatch):
-    monkeypatch.setattr(system.os, "getloadavg", lambda: (40.0, 6.0, 1.0))
-    monkeypatch.setattr(system.os, "cpu_count", lambda: 4)
-    check = system.check_load(3)
-    assert check.ok  # a 1-minute burst of 40 is ignored
-    assert check.detail == "1.50 per CPU (5 min)"
+def _stat(tmp_path, busy, idle):
+    path = tmp_path / "stat"
+    path.write_text(f"cpu  {busy} 0 0 {idle} 0 0 0 0 0 0\ncpu0 1 0 0 1 0 0 0 0 0 0\n")
+    return path
 
 
-def test_sustained_load_fails(monkeypatch):
-    monkeypatch.setattr(system.os, "getloadavg", lambda: (14.0, 13.0, 9.0))
-    monkeypatch.setattr(system.os, "cpu_count", lambda: 4)
-    assert not system.check_load(3).ok
+class Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+
+def test_cpu_usage_is_measured_between_readings(monkeypatch, tmp_path):
+    monkeypatch.setattr(system, "_cpu_last", (0.0, 100, 200))
+    monkeypatch.setattr(system, "_cpu_high_since", None)
+    clock = Clock()
+    clock.now = 60
+    check = system.check_cpu(50, 120, _stat(tmp_path, 130, 170), clock)
+    assert check == system.Check("cpu", True, "30% used")
+
+
+def test_cpu_over_the_limit_fails_only_once_it_lasts(monkeypatch, tmp_path):
+    monkeypatch.setattr(system, "_cpu_last", (0.0, 0, 0))
+    monkeypatch.setattr(system, "_cpu_high_since", None)
+    clock, results = Clock(), []
+    for minute, busy in enumerate([80, 160, 240], start=1):
+        clock.now = minute * 60
+        results.append(system.check_cpu(50, 120, _stat(tmp_path, busy, minute * 20), clock))
+    assert [check.ok for check in results] == [True, False, False]
+    assert results[1].detail == "80% used, over 50% for 2 min"
+
+
+def test_cpu_back_under_the_limit_resets_the_timer(monkeypatch, tmp_path):
+    monkeypatch.setattr(system, "_cpu_last", (0.0, 0, 0))
+    monkeypatch.setattr(system, "_cpu_high_since", None)
+    clock = Clock()
+    clock.now = 60
+    system.check_cpu(50, 120, _stat(tmp_path, 80, 20), clock)
+    clock.now = 120
+    assert system.check_cpu(50, 120, _stat(tmp_path, 90, 110), clock).ok
+    assert system._cpu_high_since is None
+
+
+def test_first_cpu_reading_samples_for_a_second(monkeypatch, tmp_path):
+    monkeypatch.setattr(system, "_cpu_last", None)
+    slept = []
+    check = system.check_cpu(50, 120, _stat(tmp_path, 10, 10), Clock(), slept.append)
+    assert slept == [1]
+    assert check.ok
+
+
+def test_unreadable_proc_stat_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(system, "_cpu_last", None)
+    assert not system.check_cpu(50, 120, tmp_path / "missing", Clock(), lambda s: None).ok
 
 
 def test_run_checks_every_configured_disk(monkeypatch):
     monkeypatch.setenv("OREO_DISK_PATHS", "/, /tmp")
     names = [check.name for check in system.run()]
     assert names[:2] == ["disk /", "disk /tmp"]
-    assert names[2:] == ["memory", "temperature", "load"]
+    assert names[2:] == ["memory", "temperature", "cpu"]
 
 
 def test_unmounted_required_path_fails(tmp_path):

@@ -132,7 +132,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     for name, handler, help_text in (
         ("health", _cmd_health, "check that every Docker container is running and healthy"),
-        ("system", _cmd_system, "check disk, memory, CPU temperature and load"),
+        ("system", _cmd_system, "check disk, memory, CPU temperature and CPU usage"),
         (
             "storage",
             _cmd_storage,

@@ -25,7 +25,7 @@ Everything that runs on **oreo-cloud**, my Raspberry Pi 5 home server: checks, a
 | Network watchdog | Every 2 minutes | Pings the router. After 2 misses it renews the Wi-Fi address; after 3 it restarts Wi-Fi, and again every 5th miss. Left alone 05:55 to 06:15, when the router restarts itself. |
 | Clock | Every minute | Alerts if the clock is not synchronised. Container and system checks wait until it is. |
 | Containers | Every 5 minutes | Every container running and healthy. |
-| System | Every 5 minutes | Disk, memory, temperature and load. |
+| System | Every minute | Memory over 50%, CPU usage over 50% for more than 2 minutes, temperature over 50°C, any disk over 90% full. |
 | Storage | Every 30 minutes | All four drives mounted, writable, under 90% full, no disk errors logged. |
 | Websites | Every 30 minutes | `cloud.animesh.org.in` and `pi.animesh.org.in` answer, and their certificates have at least 14 days left. |
 | Backup age | Every 30 minutes | Alerts if the last good backup is more than 26 hours old. |
@@ -163,6 +163,15 @@ Everything else is optional and listed, with its default, at the bottom of `.env
 | `OREO_NET_QUIET_WINDOW` | `05:55-06:15` | When the router restarts itself |
 | `OREO_SITES` | the two sites | Websites the agent checks |
 | `OREO_IMAGE_TAG` | `latest` | Image to run; set a `sha-` tag to roll back |
+
+Alert thresholds live in `compose.yaml` under `x-thresholds`, so a change goes through a pull request like any other. After it is merged, `git pull && docker compose up -d` on the Pi applies it.
+
+| Setting | Value | Alerts when |
+| --- | --- | --- |
+| `OREO_MEMORY_MAX_PERCENT` | `50` | More than half the RAM is in use (cache does not count) |
+| `OREO_CPU_MAX_PERCENT`, `OREO_CPU_SUSTAINED_SECONDS` | `50`, `120` | CPU usage stays over 50% for more than 2 minutes |
+| `OREO_TEMPERATURE_MAX_C` | `50` | The CPU is hotter than 50°C |
+| `OREO_DISK_MAX_PERCENT` | `90` | Any checked disk is more than 90% full |
 
 When the HDDs are mounted, add them to `x-drives` at the top of `compose.yaml` and to `OREO_STORAGE_MOUNTS` and `OREO_DRIVES`.
 
