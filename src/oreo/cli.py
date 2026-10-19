@@ -9,6 +9,8 @@ from collections.abc import Callable
 from oreo import (
     __version__,
     alerts,
+    backup,
+    drives,
     health,
     heartbeat,
     net,
@@ -16,6 +18,7 @@ from oreo import (
     scheduler,
     storage,
     system,
+    update,
 )
 from oreo.checks import Check, all_ok
 
@@ -60,6 +63,32 @@ def _cmd_system(args: argparse.Namespace) -> int:
 
 def _cmd_storage(args: argparse.Namespace) -> int:
     return _run_checks(storage.run, "storage", "Storage", args)
+
+
+def _cmd_drives(args: argparse.Namespace) -> int:
+    checks = drives.run()
+    if args.json:
+        _report(checks, True)
+    else:
+        print("\n".join(drives.line(check) for check in checks))
+    if args.notify:
+        try:
+            alerts.notify_on_change("drives", "Drives", checks)
+        except (notify.NotifyError, OSError) as error:
+            print(f"oreo: {error}", file=sys.stderr)
+    return 0 if all_ok(checks) else 1
+
+
+def _cmd_backup(args: argparse.Namespace) -> int:
+    try:
+        return 0 if backup.run() else 1
+    except notify.NotifyError as error:
+        print(f"oreo: {error}", file=sys.stderr)
+        return 2
+
+
+def _cmd_update(args: argparse.Namespace) -> int:
+    return 0 if update.run(args.action) else 1
 
 
 def _cmd_net(args: argparse.Namespace) -> int:
@@ -119,6 +148,31 @@ def build_parser() -> argparse.ArgumentParser:
         "needs the privileged agent service",
     )
     agent_cmd.set_defaults(handler=_cmd_agent)
+
+    drives_cmd = commands.add_parser(
+        "drives",
+        help="SMART health, life left and free space of each drive "
+        "(needs the privileged agent service)",
+    )
+    drives_cmd.add_argument("--json", action="store_true", help="print results as JSON")
+    drives_cmd.add_argument(
+        "--notify", action="store_true", help="alert via ntfy when the result changes"
+    )
+    drives_cmd.set_defaults(handler=_cmd_drives)
+
+    backup_cmd = commands.add_parser(
+        "backup",
+        help="run the nightly backup now and send its report (needs the privileged agent service)",
+    )
+    backup_cmd.set_defaults(handler=_cmd_backup)
+
+    update_cmd = commands.add_parser(
+        "update",
+        help="update Immich (database dump first) or Caddy, or remove unused images; "
+        "OS updates stay manual (needs the privileged agent service)",
+    )
+    update_cmd.add_argument("action", choices=sorted(update.ACTIONS))
+    update_cmd.set_defaults(handler=_cmd_update)
 
     net_cmd = commands.add_parser(
         "net",

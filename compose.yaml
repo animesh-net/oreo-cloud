@@ -61,7 +61,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-    mem_limit: 256m
+    # restic needs a few hundred MB while it backs up.
+    mem_limit: 1g
     logging:
       driver: json-file
       options:
@@ -87,6 +88,15 @@ services:
     volumes:
       - oreo-state:/var/lib/oreo
       - /var/run/docker.sock:/var/run/docker.sock
+      # The storage lock the host's oreo-update also takes, so a backup and an update never overlap.
+      - /run/lock:/run/lock
+      # What `oreo backup` saves, read-only; snapshots record these /host paths.
+      - /etc:/host/etc:ro
+      - /home/animesh:/host/home/animesh:ro
+      - /usr/local/bin:/host/usr/local/bin:ro
+      - /var/lib/tailscale:/host/var/lib/tailscale:ro
+      - /boot/firmware:/host/boot/firmware:ro
+      - /var/spool/cron:/host/var/spool/cron:ro
       - type: bind
         source: /mnt
         target: /host/mnt
