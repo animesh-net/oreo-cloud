@@ -9,6 +9,7 @@ from collections.abc import Callable
 from oreo import (
     __version__,
     alerts,
+    backup,
     drives,
     health,
     heartbeat,
@@ -75,6 +76,14 @@ def _cmd_drives(args: argparse.Namespace) -> int:
         except (notify.NotifyError, OSError) as error:
             print(f"oreo: {error}", file=sys.stderr)
     return 0 if all_ok(checks) else 1
+
+
+def _cmd_backup(args: argparse.Namespace) -> int:
+    try:
+        return 0 if backup.run() else 1
+    except notify.NotifyError as error:
+        print(f"oreo: {error}", file=sys.stderr)
+        return 2
 
 
 def _cmd_net(args: argparse.Namespace) -> int:
@@ -145,6 +154,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--notify", action="store_true", help="alert via ntfy when the result changes"
     )
     drives_cmd.set_defaults(handler=_cmd_drives)
+
+    backup_cmd = commands.add_parser(
+        "backup",
+        help="run the nightly backup now and send its report (needs the privileged agent service)",
+    )
+    backup_cmd.set_defaults(handler=_cmd_backup)
 
     net_cmd = commands.add_parser(
         "net",
