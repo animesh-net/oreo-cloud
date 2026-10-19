@@ -1,9 +1,12 @@
 """HTTP endpoint that oreo-monitor polls over the tailnet."""
 
+import errno
 import hmac
 import json
 import os
 import socket
+import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -56,11 +59,38 @@ def make_server(host: str, port: int, token: str | None) -> ThreadingHTTPServer:
     return ThreadingHTTPServer((host, port), make_handler(token))
 
 
+def make_server_when_ready(
+    host: str,
+    port: int,
+    token: str | None,
+    *,
+    retry_seconds: float = 5,
+    sleep: Callable[[float], None] = time.sleep,
+    log: Callable[[str], None] = print,
+) -> ThreadingHTTPServer:
+    """Bind, waiting while `host` is not yet assigned, e.g. Tailscale still starting at boot.
+
+    Docker restarts a container that exits but not one that fails to start, so binding to
+    the Tailscale address through `ports:` would leave the heartbeat down after a reboot.
+    """
+    waiting = False
+    while True:
+        try:
+            return make_server(host, port, token)
+        except OSError as error:
+            if error.errno != errno.EADDRNOTAVAIL:
+                raise
+            if not waiting:
+                log(f"oreo heartbeat: {host} not available yet, retrying every {retry_seconds:g}s")
+                waiting = True
+            sleep(retry_seconds)
+
+
 def serve(host: str | None = None, port: int | None = None) -> None:
     host = host or os.environ.get("OREO_HEARTBEAT_HOST", DEFAULT_HOST)
     port = port or int(os.environ.get("OREO_HEARTBEAT_PORT", DEFAULT_PORT))
     token = os.environ.get("OREO_HEARTBEAT_TOKEN") or None
-    server = make_server(host, port, token)
+    server = make_server_when_ready(host, port, token)
     print(f"oreo heartbeat listening on http://{host}:{port}/heartbeat", flush=True)
     try:
         server.serve_forever()

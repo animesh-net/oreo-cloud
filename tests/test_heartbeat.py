@@ -1,3 +1,4 @@
+import errno
 import json
 import threading
 import urllib.error
@@ -106,3 +107,30 @@ def test_cli_flags_override_environment(monkeypatch):
     monkeypatch.setattr(heartbeat, "serve", lambda host, port: seen.update(host=host, port=port))
     assert cli.main(["heartbeat", "--host", "100.64.0.1", "--port", "8000"]) == 0
     assert seen == {"host": "100.64.0.1", "port": 8000}
+
+
+def test_bind_waits_for_the_address_to_appear(monkeypatch):
+    attempts, slept, logged = [], [], []
+
+    def flaky(host, port, token):
+        attempts.append(host)
+        if len(attempts) < 3:
+            raise OSError(errno.EADDRNOTAVAIL, "Cannot assign requested address")
+        return "server"
+
+    monkeypatch.setattr(heartbeat, "make_server", flaky)
+    server = heartbeat.make_server_when_ready(
+        "100.64.0.5", 8787, None, sleep=slept.append, log=logged.append
+    )
+    assert server == "server"
+    assert slept == [5, 5]
+    assert len(logged) == 1
+
+
+def test_bind_fails_fast_on_other_errors(monkeypatch):
+    def in_use(host, port, token):
+        raise OSError(errno.EADDRINUSE, "Address already in use")
+
+    monkeypatch.setattr(heartbeat, "make_server", in_use)
+    with pytest.raises(OSError):
+        heartbeat.make_server_when_ready("127.0.0.1", 8787, None, sleep=lambda s: None)
