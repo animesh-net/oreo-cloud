@@ -6,7 +6,17 @@ import subprocess
 import sys
 from collections.abc import Callable
 
-from oreo import __version__, alerts, health, heartbeat, net, notify, scheduler, system
+from oreo import (
+    __version__,
+    alerts,
+    health,
+    heartbeat,
+    net,
+    notify,
+    scheduler,
+    storage,
+    system,
+)
 from oreo.checks import Check, all_ok
 
 
@@ -48,6 +58,10 @@ def _cmd_system(args: argparse.Namespace) -> int:
     return _run_checks(system.run, "system", "System checks", args)
 
 
+def _cmd_storage(args: argparse.Namespace) -> int:
+    return _run_checks(storage.run, "storage", "Storage", args)
+
+
 def _cmd_net(args: argparse.Namespace) -> int:
     try:
         reachable = net.run_once()
@@ -85,6 +99,12 @@ def build_parser() -> argparse.ArgumentParser:
     for name, handler, help_text in (
         ("health", _cmd_health, "check that every Docker container is running and healthy"),
         ("system", _cmd_system, "check disk, memory, CPU temperature and load"),
+        (
+            "storage",
+            _cmd_storage,
+            "check every drive is mounted, writable, not nearly full and logs no disk errors "
+            "(needs the privileged agent service)",
+        ),
     ):
         cmd = commands.add_parser(name, help=help_text)
         cmd.add_argument("--json", action="store_true", help="print results as JSON")
