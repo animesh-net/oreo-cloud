@@ -1,5 +1,7 @@
 # oreo-cloud
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Everything that runs on **oreo-cloud**, my Raspberry Pi 5 home server: checks, alerts, the network watchdog, the nightly backup and container updates.
 
 - It all ships as **one Docker image**, built by GitHub Actions and pulled on the Pi. Nothing of ours runs outside Docker.
