@@ -56,7 +56,7 @@ def test_default_jobs_cover_network_health_and_system():
     jobs = {job.name: job for job in scheduler.default_jobs(100)}
     assert {name: job.every for name, job in jobs.items()} == {
         "net": 120, "clock": 60, "health": 300, "system": 60, "storage": 1800, "sites": 1800,
-        "backup": 60, "backup-age": 1800,
+        "backup": 60, "compose": 1800, "backup-age": 1800,
     }  # fmt: skip
     assert not jobs["net"].needs_clock
     assert not jobs["clock"].needs_clock

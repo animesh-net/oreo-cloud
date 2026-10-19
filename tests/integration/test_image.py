@@ -69,6 +69,8 @@ def heartbeat(containers):
         "run", "-d", "--hostname", "oreo-cloud", "--health-interval", "1s",
         *HARDENING, *docker_args(),
         "-e", f"OREO_HEARTBEAT_TOKEN={TOKEN}",
+        # Not the Pi: skip its built-in drive paths and tight limits.
+        "-e", "OREO_SETTINGS_FILE=",
         "-p", "127.0.0.1::8787", IMAGE,
     )  # fmt: skip
     port = docker("port", name, "8787/tcp").stdout.split(":")[-1].strip()
@@ -273,8 +275,6 @@ def test_compose_binds_heartbeat_to_bind_ip():
     assert service["environment"]["OREO_AGENT_ALIVE_FILE"] == "/var/lib/oreo/agent.alive"
     assert service["image"].endswith(":latest")
     assert service["group_add"] == ["996"]
-    assert service["environment"]["OREO_DISK_PATHS"] == "/,/host/mnt/data-hot-ssd1"
-    assert service["environment"]["OREO_MOUNT_PATHS"] == "/host/mnt/data-hot-ssd1"
     [mnt] = [v for v in service["volumes"] if v["target"] == "/host/mnt"]
     assert mnt["source"] == "/mnt"
     assert mnt["bind"]["propagation"] == "rslave"
@@ -321,3 +321,23 @@ def test_agent_can_run_commands_on_the_host():
         check=False,
     )  # fmt: skip
     assert result.stdout.startswith("0 "), result.stdout + result.stderr
+
+
+def test_image_ships_its_settings_and_the_pis_files():
+    # The Pi gets compose.yaml and .env.example from the image, not from git.
+    for name, path in (("compose", "compose.yaml"), ("env-example", ".env.example")):
+        result = docker("run", "--rm", IMAGE, "show", name)
+        assert result.stdout == (ROOT / path).read_text()
+    shipped = docker("run", "--rm", "--entrypoint", "cat", IMAGE, "/usr/share/oreo/settings.env")
+    assert shipped.stdout == (ROOT / "config" / "settings.env").read_text()
+
+
+def test_built_in_settings_apply_and_env_overrides_them():
+    def disks(*env: str) -> list[str]:
+        result = docker("run", "--rm", *env, IMAGE, "system", "--json", check=False)
+        return [
+            c["name"] for c in json.loads(result.stdout)["checks"] if c["name"].startswith("disk")
+        ]
+
+    assert disks() == ["disk /", "disk /host/mnt/data-hot-ssd1"]
+    assert disks("-e", "OREO_DISK_PATHS=/") == ["disk /"]

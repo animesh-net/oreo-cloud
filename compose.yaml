@@ -1,20 +1,3 @@
-# Shared by both services. When the HDDs are mounted, add them here once.
-x-drives: &drives
-  OREO_DISK_PATHS: /,/host/mnt/data-hot-ssd1
-  OREO_MOUNT_PATHS: /host/mnt/data-hot-ssd1
-
-# Alert thresholds, for both services (the heartbeat reports the same checks), and how often a
-# problem that lasts is repeated. They are set here rather than in .env so every change is
-# reviewed in a pull request. CPU usage alerts only once it has stayed over the limit for
-# OREO_CPU_SUSTAINED_SECONDS.
-x-thresholds: &thresholds
-  OREO_ALERT_REMINDER_HOURS: "1"
-  OREO_MEMORY_MAX_PERCENT: "50"
-  OREO_CPU_MAX_PERCENT: "50"
-  OREO_CPU_SUSTAINED_SECONDS: "120"
-  OREO_TEMPERATURE_MAX_C: "50"
-  OREO_DISK_MAX_PERCENT: "90"
-
 # Only /mnt is shared, not the whole host. The container's own / sits on the NVMe, so "/"
 # already reports its usage. rslave: drives mounted after the container starts show up too.
 x-mnt: &mnt
@@ -31,8 +14,10 @@ x-logging: &logging
     max-size: 10m
     max-file: "3"
 
-# Optional settings (time zone, backup time, thresholds, ...) come from .env as well; see
-# .env.example. Set OREO_IMAGE_TAG to a sha-<commit> tag to roll back.
+# Settings (drive paths, alert thresholds, ...) are built into the image from
+# config/settings.env; .env holds the required values and can override a setting. Set
+# OREO_IMAGE_TAG to a sha-<commit> tag to roll back. This file ships in the image too:
+# `docker run --rm ghcr.io/animesh-net/oreo-cloud show compose > compose.yaml` refreshes it.
 x-env-file: &env-file
   - path: .env
     required: false
@@ -61,7 +46,6 @@ services:
       - "${DOCKER_GID:?set DOCKER_GID in .env}"
     env_file: *env-file
     environment:
-      <<: [*drives, *thresholds]
       OREO_HEARTBEAT_TOKEN: "${OREO_HEARTBEAT_TOKEN:?set OREO_HEARTBEAT_TOKEN in .env}"
       OREO_HEARTBEAT_HOST: "${OREO_BIND_IP:?set OREO_BIND_IP in .env}"
       # The heartbeat fails when the agent stops touching this file.
@@ -93,7 +77,6 @@ services:
     logging: *logging
     env_file: *env-file
     environment:
-      <<: [*drives, *thresholds]
       # The agent is what sends alerts, so it refuses to start without somewhere to send them.
       OREO_NTFY_URL: "${OREO_NTFY_URL:?set OREO_NTFY_URL in .env}"
     healthcheck:

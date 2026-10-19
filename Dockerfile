@@ -16,6 +16,10 @@ COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 RUN pip install . && rm -rf /app
 
+# Settings, and the files the Pi needs, so updating the image is all an update takes.
+COPY config/settings.env /usr/share/oreo/settings.env
+COPY compose.yaml .env.example /usr/share/oreo/
+
 RUN useradd --system --uid 10001 --no-create-home oreo \
     && mkdir -p /var/lib/oreo && chown oreo /var/lib/oreo
 USER oreo

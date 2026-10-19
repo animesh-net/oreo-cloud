@@ -29,6 +29,7 @@ Everything that runs on **oreo-cloud**, my Raspberry Pi 5 home server: checks, a
 | Storage | Every 30 minutes | All four drives mounted, writable, under 90% full, no disk errors logged. |
 | Websites | Every 30 minutes | `cloud.animesh.org.in` and `pi.animesh.org.in` answer, and their certificates have at least 14 days left. |
 | Backup age | Every 30 minutes | Alerts if the last good backup is more than 26 hours old. |
+| Setup | Every 30 minutes | Alerts if the Pi's `compose.yaml` differs from the one in the image, with the command to refresh it. |
 | Nightly backup | 03:30 | Saves the Pi's settings with restic and copies Immich's database dump to the flash drive, then sends the nightly report. Runs later if the Pi was off at 03:30. |
 
 ### Alerts on my phone
@@ -55,18 +56,17 @@ Every command is one line, so each can be pasted on its own from a phone.
    echo "<token>" | docker login ghcr.io -u animesh-net --password-stdin
    ```
 
-2. Clone with a read-only deploy key, so `git pull` works later without a password. Make the key, add the `.pub` line under this repository's Settings, then Deploy keys, with write access off, then clone:
+2. Get the two files the Pi needs from the image itself; git is not needed on the Pi:
 
    ```bash
-   ssh-keygen -t ed25519 -f ~/.ssh/oreo_cloud_deploy -N "" -C oreo-cloud-pi
-   cat ~/.ssh/oreo_cloud_deploy.pub
-   git clone -c core.sshCommand="ssh -i ~/.ssh/oreo_cloud_deploy -o IdentitiesOnly=yes" git@github.com:animesh-net/oreo-cloud.git ~/oreo-cloud
+   mkdir -p ~/oreo-cloud && cd ~/oreo-cloud
+   docker run --rm ghcr.io/animesh-net/oreo-cloud show compose > compose.yaml
+   docker run --rm ghcr.io/animesh-net/oreo-cloud show env-example > .env && chmod 600 .env
    ```
 
-3. Create `.env` and fill in the four required values. These lines do it without showing the token on screen; the last one assumes the old alert file `/etc/oreo/alert.env`, otherwise set `OREO_NTFY_URL` with `nano .env`:
+3. Fill in the four required values in `.env`. These lines do it without showing the token on screen; the last one assumes the old alert file `/etc/oreo/alert.env`, otherwise set `OREO_NTFY_URL` with `nano .env`:
 
    ```bash
-   cd ~/oreo-cloud && cp .env.example .env && chmod 600 .env
    sed -i "s|^DOCKER_GID=.*|DOCKER_GID=$(stat -c %g /var/run/docker.sock)|" .env
    sed -i "s|^OREO_BIND_IP=.*|OREO_BIND_IP=$(tailscale ip -4)|" .env
    sed -i "s|^OREO_HEARTBEAT_TOKEN=.*|OREO_HEARTBEAT_TOKEN=$(openssl rand -hex 32)|" .env
@@ -126,9 +126,13 @@ OS updates are not included, because upgrading the OS can restart Docker mid-way
 
 ### Update or roll back this image
 
+Code and settings both come with the image, so this is the whole update:
+
 ```bash
-docker compose pull && docker compose up -d
+cd ~/oreo-cloud && docker compose pull && docker compose up -d
 ```
+
+`compose.yaml` itself changes rarely. When the image brings a new one, the agent sends a **Setup** alert with the command to refresh it: `cd ~/oreo-cloud && docker run --rm ghcr.io/animesh-net/oreo-cloud show compose > compose.yaml && docker compose up -d`.
 
 The last 10 images are kept. To roll back, add `OREO_IMAGE_TAG=sha-<commit>` to `.env` and run `docker compose up -d`. Remove that line to go back to the latest.
 
@@ -163,7 +167,7 @@ Everything else is optional and listed, with its default, at the bottom of `.env
 | `OREO_SITES` | the two sites | Websites the agent checks |
 | `OREO_IMAGE_TAG` | `latest` | Image to run; set a `sha-` tag to roll back |
 
-Alert thresholds and the reminder interval live in `compose.yaml` under `x-thresholds`, so a change goes through a pull request like any other. After it is merged, `git pull && docker compose up -d` on the Pi applies it.
+Drive paths, alert thresholds and the reminder interval live in [`config/settings.env`](config/settings.env), which is built into the image. A change goes through a pull request like any other, and the next `docker compose pull && docker compose up -d` applies it. A value set in the Pi's `.env` overrides the built-in one.
 
 | Setting | Value | Alerts when |
 | --- | --- | --- |
@@ -173,7 +177,7 @@ Alert thresholds and the reminder interval live in `compose.yaml` under `x-thres
 | `OREO_DISK_MAX_PERCENT` | `90` | Any checked disk is more than 90% full |
 | `OREO_ALERT_REMINDER_HOURS` | `1` | How often a problem is repeated while it lasts |
 
-When the HDDs are mounted, add them to `x-drives` at the top of `compose.yaml` and to `OREO_STORAGE_MOUNTS` and `OREO_DRIVES`.
+When the HDDs are mounted, add them to `OREO_DISK_PATHS` and `OREO_MOUNT_PATHS` in `config/settings.env`, and set `OREO_STORAGE_MOUNTS` and `OREO_DRIVES` there too.
 
 ## Development
 
