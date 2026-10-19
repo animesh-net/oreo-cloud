@@ -175,6 +175,26 @@ def test_state_volume_is_writable_by_the_non_root_user():
         docker("volume", "rm", "-f", volume, check=False)
 
 
+def test_agent_runs_jobs_stays_alive_and_stops_promptly(containers):
+    volume = f"oreo-it-{uuid.uuid4().hex[:8]}"
+    docker("volume", "create", volume)
+    agent = None
+    try:
+        agent = containers("run", "-d", "--init", "-v", f"{volume}:/var/lib/oreo", IMAGE, "agent")
+        wait_for(
+            lambda: docker("exec", agent, "test", "-f", "/var/lib/oreo/agent.alive", check=False)
+            .returncode == 0,
+            timeout=40,
+        )  # fmt: skip
+        started = time.monotonic()
+        docker("stop", "-t", "8", agent)
+        assert time.monotonic() - started < 4
+    finally:
+        if agent:
+            docker("rm", "-f", agent, check=False)
+        docker("volume", "rm", "-f", volume, check=False)
+
+
 def test_image_can_enter_host_namespaces():
     # `oreo net` runs the host's ip, ping, networkctl and netplan through nsenter.
     assert docker("run", "--rm", "--entrypoint", "nsenter", IMAGE, "--version").returncode == 0
@@ -218,5 +238,20 @@ def test_compose_binds_heartbeat_to_bind_ip():
     assert mnt["bind"]["propagation"] == "rslave"
     assert service["init"] is True
     assert service["read_only"] is True
+    assert "privileged" not in service  # the root-on-host container is the agent, not this one
     assert service["cap_drop"] == ["ALL"]
     assert service["security_opt"] == ["no-new-privileges:true"]
+
+
+def test_compose_agent_has_host_access_but_no_ports():
+    env = {**os.environ, "DOCKER_GID": "996", "OREO_HEARTBEAT_TOKEN": "x"}
+    result = subprocess.run(
+        ["docker", "compose", "-f", ROOT / "compose.yaml", "config", "--format", "json"],
+        capture_output=True, text=True, env=env, check=True,
+    )  # fmt: skip
+    agent = json.loads(result.stdout)["services"]["agent"]
+    assert agent["command"] == ["agent"]
+    assert agent["privileged"] is True
+    assert agent["pid"] == "host"
+    assert agent["user"] == "root"
+    assert "ports" not in agent

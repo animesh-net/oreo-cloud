@@ -16,6 +16,7 @@ The external 5-minute monitor lives in the public repository `oreo-monitor`.
 | `oreo notify MESSAGE [--title] [--priority] [--tags]` | Sends a push notification through ntfy. |
 | `oreo health [--json] [--notify]` | Fails if any Docker container is not running or reports `unhealthy`. Containers labelled `oreo.ignore=true` are skipped. |
 | `oreo system [--json] [--notify]` | Fails if disk, memory, CPU temperature or load is over its threshold. |
+| `oreo agent` | Runs the recurring jobs in the foreground: `net` every 2 minutes, `health` and `system` every 5 (with alerts on change). One failing job never stops the others, a signal stops it at once, and it touches `agent.alive` in the state directory every 15 seconds for its health check. Needs host access like `net`. |
 | `oreo net` | One network check: pings the default gateway on the host. After 2 failed checks in a row it renews the Wi-Fi address (`networkctl reconfigure`); after 3 it restarts Wi-Fi (`netplan apply`), then again every 5th failed check. While the network is down no alert can be sent, so the only message is "Oreo Cloud OK" once it is back, naming the fix and the Wi-Fi address. Exits `0` when the gateway answers, `1` when it does not, `2` when the host cannot be reached. Needs host access, see below. |
 | `oreo heartbeat [--host] [--port]` | Serves `GET /heartbeat` for `oreo-monitor`: runs `health` and `system` on each request and returns their results as JSON, with HTTP `200` when everything passes and `503` when anything fails. |
 
@@ -63,7 +64,10 @@ docker compose up -d
 
 Private packages share the account's 500 MB of free storage, so after publishing, the workflow deletes all but the 10 most recent image versions. Images are pushed without build attestations: with them, each push creates several linked versions, and pruning by count could delete part of a newer image.
 
-`compose.yaml` runs `oreo heartbeat` as the non-root `oreo` user, with:
+`compose.yaml` runs two services from the same image:
+
+- `agent` runs `oreo agent` as root, privileged and in the host's process namespace, so the recurring jobs (network watchdog, container and system checks) need no cron or systemd timer on the Pi. It publishes no port and runs nothing but this image. Its health check fails if the loop stops, so `oreo health` reports it.
+- `oreo` runs `oreo heartbeat`, the only service with a listening port, as the non-root `oreo` user, with:
 
 - the Docker socket mounted read-only and the socket's group added (`DOCKER_GID`), so `health` can list containers;
 - the host's `/mnt` mounted read-only at `/host/mnt` with `rslave` propagation, so a drive that mounts after the container starts still shows up. `system` checks the container's `/`, which is the NVMe, and the data SSD at `/host/mnt/data-hot-ssd1`, which must be a mount point; add the HDDs to both variables in `compose.yaml` once they are mounted. The rest of the host's filesystem is not shared;
@@ -73,7 +77,7 @@ Private packages share the account's 500 MB of free storage, so after publishing
 - port `8787` published on `OREO_BIND_IP` (set it to `tailscale ip -4` to keep the heartbeat off the LAN);
 - `OREO_HEARTBEAT_TOKEN` required, so it refuses to start without one.
 
-Read-only mounting stops writes to the socket file, not Docker API calls: anything that can reach the socket can control Docker. Only `oreo` gets it.
+Read-only mounting stops writes to the socket file, not Docker API calls: anything that can reach the socket can control Docker. Only the two services above get it, and the agent has root on the host anyway.
 
 `oreo net` runs the host's own `ip`, `ping`, `networkctl` and `netplan` by entering the host's namespaces with `nsenter`, so it needs a privileged container that shares the host's process namespace and runs as root. That is root on the Pi: give it only to a container that has no listening port, never to the heartbeat service. For example:
 
@@ -82,7 +86,7 @@ docker run --rm --privileged --pid=host --user root -v oreo-cloud_oreo-state:/va
   --env-file .env ghcr.io/animesh-net/oreo-cloud:latest net
 ```
 
-Run any other command in a one-off container, for example from cron:
+Run any other command in a one-off container:
 
 ```bash
 docker compose run --rm oreo system --notify
