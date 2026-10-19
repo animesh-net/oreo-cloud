@@ -19,7 +19,7 @@ EXPOSE 8787
 # Liveness only: /heartbeat returns 503 whenever any check fails, which must not
 # mark this container itself unhealthy and cascade into its own health report.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD ["python", "-c", "import os, socket; socket.create_connection(('127.0.0.1', int(os.environ.get('OREO_HEARTBEAT_PORT', 8787))), 5)"]
+    CMD ["python", "-c", "import os, socket; h = os.environ.get('OREO_HEARTBEAT_HOST', '0.0.0.0'); socket.create_connection(('127.0.0.1' if h == '0.0.0.0' else h, int(os.environ.get('OREO_HEARTBEAT_PORT', 8787))), 5)"]
 
 ENTRYPOINT ["oreo"]
 CMD ["heartbeat"]

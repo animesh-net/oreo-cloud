@@ -2,7 +2,9 @@ services:
   oreo:
     image: ghcr.io/animesh-net/oreo-cloud:latest
     container_name: oreo
-    hostname: oreo-cloud
+    # Host network: the heartbeat binds the Tailscale address itself and waits for it at boot,
+    # because Docker does not retry a container whose port binding failed to start.
+    network_mode: host
     restart: unless-stopped
     # PID 1 ignores SIGTERM unless it handles it; init forwards it so stops are immediate.
     init: true
@@ -24,12 +26,11 @@ services:
       - "${DOCKER_GID:?set DOCKER_GID in .env}"
     environment:
       OREO_HEARTBEAT_TOKEN: "${OREO_HEARTBEAT_TOKEN:?set OREO_HEARTBEAT_TOKEN in .env}"
+      OREO_HEARTBEAT_HOST: "${OREO_BIND_IP:?set OREO_BIND_IP in .env}"
       OREO_NTFY_URL: "${OREO_NTFY_URL:-}"
       OREO_NTFY_TOKEN: "${OREO_NTFY_TOKEN:-}"
       OREO_DISK_PATHS: /,/host/mnt/data-hot-ssd1
       OREO_MOUNT_PATHS: /host/mnt/data-hot-ssd1
-    ports:
-      - "${OREO_BIND_IP:-0.0.0.0}:8787:8787"
     volumes:
       # Alert state (what is already failing), so alerts are sent on change, not every run.
       - oreo-state:/var/lib/oreo

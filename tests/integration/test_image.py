@@ -109,6 +109,18 @@ def test_stops_promptly_on_sigterm(heartbeat):
     assert time.monotonic() - started < 4
 
 
+def test_heartbeat_waits_for_an_unassigned_address(containers):
+    # 192.0.2.1 is reserved for documentation, so it is never assigned: the heartbeat must
+    # keep waiting instead of exiting, as it would at boot before Tailscale is up.
+    name = containers(
+        "run", "-d", *docker_args(), "-e", f"OREO_HEARTBEAT_TOKEN={TOKEN}",
+        "-e", "OREO_HEARTBEAT_HOST=192.0.2.1", IMAGE,
+    )  # fmt: skip
+    wait_for(lambda: "not available yet" in docker("logs", name).stdout)
+    time.sleep(2)
+    assert docker("inspect", "-f", "{{.State.Running}}", name).stdout.strip() == "true"
+
+
 def test_heartbeat_requires_token(heartbeat):
     _, get = heartbeat
     assert get(token=None)[0] == 401
@@ -204,6 +216,7 @@ REQUIRED_ENV = {
     "DOCKER_GID": "996",
     "OREO_HEARTBEAT_TOKEN": "x",
     "OREO_NTFY_URL": "https://ntfy.example/topic",
+    "OREO_BIND_IP": "100.64.0.5",
 }
 
 
@@ -222,13 +235,15 @@ def test_compose_requires_env_values(missing):
 
 
 def test_compose_binds_heartbeat_to_bind_ip():
-    env = {**os.environ, **REQUIRED_ENV, "OREO_BIND_IP": "100.64.0.5"}
+    env = {**os.environ, **REQUIRED_ENV}
     result = subprocess.run(
         ["docker", "compose", "-f", ROOT / "compose.yaml", "config", "--format", "json"],
         capture_output=True, text=True, env=env, check=True,
     )  # fmt: skip
     service = json.loads(result.stdout)["services"]["oreo"]
-    assert service["ports"][0]["host_ip"] == "100.64.0.5"
+    assert service["network_mode"] == "host"
+    assert "ports" not in service
+    assert service["environment"]["OREO_HEARTBEAT_HOST"] == "100.64.0.5"
     assert service["group_add"] == ["996"]
     assert service["environment"]["OREO_DISK_PATHS"] == "/,/host/mnt/data-hot-ssd1"
     assert service["environment"]["OREO_MOUNT_PATHS"] == "/host/mnt/data-hot-ssd1"

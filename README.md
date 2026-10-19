@@ -73,8 +73,7 @@ Private packages share the account's 500 MB of free storage, so after publishing
 - the host's `/mnt` mounted read-only at `/host/mnt` with `rslave` propagation, so a drive that mounts after the container starts still shows up. `system` checks the container's `/`, which is the NVMe, and the data SSD at `/host/mnt/data-hot-ssd1`, which must be a mount point; add the HDDs to both variables in `compose.yaml` once they are mounted. The rest of the host's filesystem is not shared;
 - a read-only root filesystem, all Linux capabilities dropped, `no-new-privileges`, a 256 MB memory limit, a 100-process limit and 3 x 10 MB of logs;
 - `init: true`, so `docker stop` and updates end the container at once instead of waiting 10 seconds for a hard kill;
-- hostname `oreo-cloud`, so heartbeat reports and alerts name the Pi;
-- port `8787` published on `OREO_BIND_IP` (set it to `tailscale ip -4` to keep the heartbeat off the LAN);
+- the host's network, binding port `8787` on `OREO_BIND_IP` only (required: set it to `tailscale ip -4` to keep the heartbeat off the LAN). If that address does not exist yet, as at boot before Tailscale is up, it waits and retries every 5 seconds instead of exiting; Docker does not restart a container whose port binding failed, so publishing the port through `ports:` would leave it down after a reboot. Reports name the Pi by its own hostname;
 - `OREO_HEARTBEAT_TOKEN` required, so it refuses to start without one.
 
 Read-only mounting stops writes to the socket file, not Docker API calls: anything that can reach the socket can control Docker. Only the two services above get it, and the agent has root on the host anyway.
