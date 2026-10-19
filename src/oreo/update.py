@@ -26,7 +26,7 @@ MIN_DUMP_BYTES = 5_000_000
 KEEP_PRE_UPDATE_DUMPS = 3
 HEALTHY_WAIT_SECONDS = 180
 
-Runner = Callable[[Sequence[str]], subprocess.CompletedProcess]
+Runner = Callable[..., subprocess.CompletedProcess]  # run(command, cwd=None)
 Output = Callable[[str], None]
 
 
@@ -34,8 +34,15 @@ class UpdateError(Exception):
     pass
 
 
+def host(command: Sequence[str], cwd: str | None = None) -> subprocess.CompletedProcess:
+    """Run on the host with no time limit: pulling a new Immich release can take many
+    minutes. `cwd` starts it inside that host folder, where compose finds its files."""
+    prefix = [*net.HOST_PREFIX[:-1], *([f"--wd={cwd}"] if cwd else []), "--"]
+    return subprocess.run([*prefix, *command], capture_output=True, text=True, check=False)
+
+
 def _compose(run: Runner, project: str, *args: str) -> subprocess.CompletedProcess:
-    return run(["docker", "compose", "--project-directory", project, *args])
+    return run(["docker", "compose", "--project-directory", project, *args], cwd=project)
 
 
 def _inspect(run: Runner, *args: str) -> str:
@@ -77,7 +84,7 @@ def dump_database(path: Path, user: str) -> None:
 
 
 def immich(
-    run: Runner = net.host_run,
+    run: Runner = host,
     out: Output = print,
     *,
     dump: Callable[[Path, str], None] = dump_database,
@@ -133,7 +140,7 @@ def immich(
     return True
 
 
-def caddy(run: Runner = net.host_run, out: Output = print) -> bool:
+def caddy(run: Runner = host, out: Output = print) -> bool:
     out("== CADDY (rebuild with latest base image) ==")
     built = _compose(run, CADDY, "build", "--pull")
     out("\n".join(built.stdout.splitlines()[-3:]))
@@ -143,14 +150,14 @@ def caddy(run: Runner = net.host_run, out: Output = print) -> bool:
     return _compose(run, CADDY, "up", "-d").returncode == 0
 
 
-def prune(run: Runner = net.host_run, out: Output = print) -> bool:
+def prune(run: Runner = host, out: Output = print) -> bool:
     out("== REMOVE UNUSED DOCKER IMAGES ==")
     result = run(["docker", "image", "prune", "-f"])
     out(result.stdout.rstrip())
     return result.returncode == 0
 
 
-def status(run: Runner = net.host_run, out: Output = print) -> bool:
+def status(run: Runner = host, out: Output = print) -> bool:
     out("== STATUS ==")
     reboot = (HOST / "var/run/reboot-required").exists()
     out(f"Reboot needed: {'yes (run: sudo reboot; never done automatically)' if reboot else 'no'}")
@@ -172,4 +179,7 @@ def run(action: str, out: Output = print) -> bool:
             return all([step(out=out) for step in ACTIONS[action]])
     except backup.BackupError:
         out("A backup or another job is running. Try again later.")
+        return False
+    except (OSError, subprocess.SubprocessError) as error:
+        out(f"Could not run a command on the host ({error}). Nothing more was changed.")
         return False

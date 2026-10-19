@@ -16,9 +16,11 @@ class FakeDocker:
         self.healthy = healthy
         self.pull_ok = pull_ok
         self.commands = []
+        self.cwds = []
 
-    def __call__(self, command):
+    def __call__(self, command, cwd=None):
         self.commands.append(" ".join(command))
+        self.cwds.append(cwd)
         out, code = "", 0
         text = " ".join(command)
         if text.endswith("pull -q"):
@@ -77,6 +79,9 @@ def test_new_immich_is_dumped_then_started(dumps):
         "Dump saved: /mnt/data-hot-ssd1/library/backups/pre-update-2026-10-19-0915.sql.gz" in lines
     )
     assert docker.ran("--project-directory /home/animesh/immich up -d")
+    assert docker.cwds[
+        docker.commands.index(next(c for c in docker.commands if c.endswith("up -d")))
+    ] == ("/home/animesh/immich")
     assert "Immich is healthy." in lines
 
 
@@ -125,3 +130,27 @@ def test_update_waits_for_a_running_backup(dumps, monkeypatch):
 def test_update_command_has_no_os_option():
     with pytest.raises(SystemExit):
         cli.main(["update", "os"])
+
+
+def test_host_commands_have_no_time_limit_and_start_in_the_folder(monkeypatch):
+    seen = {}
+
+    def fake_run(argv, **kwargs):
+        seen["argv"], seen["kwargs"] = argv, kwargs
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(update.subprocess, "run", fake_run)
+    update.host(["docker", "compose", "pull"], cwd="/home/animesh/immich")
+    assert "timeout" not in seen["kwargs"]
+    assert "--wd=/home/animesh/immich" in seen["argv"]
+    assert seen["argv"][seen["argv"].index("--") + 1 :] == ["docker", "compose", "pull"]
+
+
+def test_host_command_failure_is_reported_not_raised(dumps, monkeypatch):
+    def broken(out):
+        raise FileNotFoundError("nsenter")
+
+    monkeypatch.setitem(update.ACTIONS, "prune", [broken])
+    lines = []
+    assert not update.run("prune", lines.append)
+    assert lines == ["Could not run a command on the host (nsenter). Nothing more was changed."]
