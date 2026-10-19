@@ -29,7 +29,7 @@ class FakeRestic:
 
     def __call__(self, command):
         self.commands.append(list(command))
-        verb = command[5]
+        verb = command[7]
         if verb == self.fail:
             return subprocess.CompletedProcess(command, 1, "", "Fatal: repository is locked")
         out = ""
@@ -40,7 +40,7 @@ class FakeRestic:
         return subprocess.CompletedProcess(command, 0, out, "")
 
     def verbs(self):
-        return [c[5] for c in self.commands]
+        return [c[7] for c in self.commands]
 
 
 @pytest.fixture
@@ -119,6 +119,7 @@ def test_report_matches_the_nightly_message(pi, sent):
     assert kwargs == {"title": "Oreo Cloud OK", "tags": "white_check_mark"}
     assert restic.verbs() == ["backup", "snapshots"]
     assert "--host" in restic.commands[0] and "oreo-cloud" in restic.commands[0]
+    assert restic.commands[0][6].endswith("state/restic-cache")
 
 
 def test_dump_is_copied_and_old_copies_removed(pi, sent):
