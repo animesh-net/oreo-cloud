@@ -17,13 +17,17 @@ from datetime import UTC, datetime, time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from oreo import notify
+from oreo import alerts, notify
 from oreo.alerts import DEFAULT_TIMEZONE, clock
+from oreo.checks import Check
 
 DEFAULT_INTERFACE = "wlan0"
 # The router restarts itself every day at 06:00. An outage inside this window is expected:
 # no repair is attempted and, if it ends inside the window too, no message is sent.
 DEFAULT_QUIET_WINDOW = "05:55-06:15"
+# The host script this command replaces. While its timer is active the two would repair the
+# network independently, so this one stands aside and says so.
+LEGACY_TIMER = "oreo-netwatch.timer"
 HOST_PREFIX = ("nsenter", "--target", "1", "--mount", "--uts", "--ipc", "--net", "--pid", "--")
 
 # Failed checks in a row before each recovery step. The first is cheap, the second restarts
@@ -88,6 +92,29 @@ def _address(run: Runner, interface: str) -> str:
     return fields[2] if result.returncode == 0 and len(fields) > 2 else "none"
 
 
+def _report_legacy_timer(active: bool, send: Callable[..., None], now: datetime) -> None:
+    # Never let a failed alert block a repair: during an outage ntfy is unreachable.
+    try:
+        alerts.notify_on_change(
+            "net-legacy",
+            "Network watchdog",
+            [
+                Check(
+                    LEGACY_TIMER,
+                    not active,
+                    "still active on the host, so the agent is not repairing the network; "
+                    f"run: sudo systemctl disable --now {LEGACY_TIMER}"
+                    if active
+                    else "disabled",
+                )
+            ],
+            send=send,
+            now=now,
+        )
+    except notify.NotifyError as error:
+        print(f"oreo net: {error}", flush=True)
+
+
 def run_once(
     run: Runner = host_run,
     *,
@@ -98,6 +125,10 @@ def run_once(
     send = send or notify.send
     now = now or datetime.now(UTC)
     interface = os.environ.get("OREO_NET_INTERFACE", DEFAULT_INTERFACE)
+    legacy_active = run(["systemctl", "is-active", "--quiet", LEGACY_TIMER]).returncode == 0
+    _report_legacy_timer(legacy_active, send, now)
+    if legacy_active:
+        return _gateway_answers(run, _gateway(run))
     state = _load()
 
     if _gateway_answers(run, _gateway(run)):

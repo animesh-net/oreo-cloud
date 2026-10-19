@@ -11,7 +11,8 @@ START = datetime(2026, 10, 19, 6, 0, tzinfo=UTC)
 class FakeHost:
     """Stands in for nsenter: records host commands and answers ip and ping."""
 
-    def __init__(self, gateway_up: bool = False, has_route: bool = True):
+    def __init__(self, gateway_up: bool = False, has_route: bool = True, legacy: bool = False):
+        self.legacy = legacy
         self.gateway_up = gateway_up
         self.has_route = has_route
         self.commands: list[list[str]] = []
@@ -21,6 +22,8 @@ class FakeHost:
         out, code = "", 0
         if command[:3] == ["ip", "-4", "route"]:
             out = "default via 192.168.0.1 dev wlan0 proto dhcp\n" if self.has_route else ""
+        elif command[0] == "systemctl":
+            code = 0 if self.legacy else 3
         elif command[0] == "ping":
             code = 0 if self.gateway_up else 1
         elif command[:3] == ["ip", "-4", "-br"]:
@@ -188,3 +191,37 @@ def test_quiet_window_can_cross_midnight(monkeypatch):
     assert net.in_quiet_window(datetime(2026, 10, 19, 18, 25, tzinfo=UTC))  # 23:55 local
     assert net.in_quiet_window(datetime(2026, 10, 19, 18, 35, tzinfo=UTC))  # 00:05 local
     assert not net.in_quiet_window(datetime(2026, 10, 19, 18, 45, tzinfo=UTC))
+
+
+def test_active_host_timer_stops_repairs_and_alerts_once(sent):
+    host = FakeHost(legacy=True)
+    for step in range(4):
+        assert not check(host, sent, step)
+    assert host.repairs() == []
+    [(message, kwargs)] = sent
+    assert "oreo-netwatch.timer: still active on the host" in message
+    assert "sudo systemctl disable --now oreo-netwatch.timer" in message
+    assert kwargs["title"] == "Oreo Cloud NEEDS ATTENTION"
+
+
+def test_repairs_resume_once_the_host_timer_is_disabled(sent):
+    host = FakeHost(legacy=True)
+    check(host, sent, 0)
+    host.legacy = False
+    check(host, sent, 1)
+    check(host, sent, 2)
+    assert host.repairs() == ["networkctl"]
+    assert sent[1][1]["title"] == "Oreo Cloud OK"
+
+
+def test_unsendable_timer_message_does_not_block_repairs():
+    host = FakeHost(legacy=True)
+
+    def offline(message, **kwargs):
+        raise notify.NotifyError("ntfy unreachable")
+
+    net.run_once(host, send=offline, now=START)
+    host.legacy = False  # disabled mid-outage: the "back to normal" message cannot be sent
+    for step in (1, 2):
+        net.run_once(host, send=offline, now=START + timedelta(minutes=2 * step))
+    assert host.repairs() == ["networkctl"]
