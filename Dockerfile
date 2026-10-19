@@ -5,6 +5,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# smartctl for `oreo drives`.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends smartmontools \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
