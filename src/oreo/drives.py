@@ -37,7 +37,9 @@ def configured() -> list[tuple[str, str]]:
 def find_partition(label: str) -> str | None:
     """Kernel name of the partition with this label, e.g. "sda1"."""
     link = HOST_ROOT / "dev/disk/by-label" / label
-    return Path(os.path.realpath(link)).name if link.exists() else None
+    # Not realpath: it resolves /proc/1/root to the container's own "/", which has no by-label
+    # links. The link itself is "../../<partition>".
+    return Path(os.readlink(link)).name if link.exists() else None
 
 
 def parent_disk(partition: str, sys_block: Path = Path("/sys/class/block")) -> str:
