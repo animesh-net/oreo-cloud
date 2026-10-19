@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Operations CLI for the oreo-cloud Raspberry Pi home server"
 license = "MIT"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["tzdata"]
 
 [project.optional-dependencies]
 dev = ["pre-commit", "pytest", "ruff"]

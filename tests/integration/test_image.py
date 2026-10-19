@@ -161,6 +161,20 @@ def test_one_off_system_checks_host_disk():
     assert names == ["disk /host", "memory", "temperature", "load"]
 
 
+def test_state_volume_is_writable_by_the_non_root_user():
+    volume = f"oreo-it-{uuid.uuid4().hex[:8]}"
+    try:
+        result = docker(
+            "run", "--rm", "--read-only", "-v", f"{volume}:/var/lib/oreo",
+            "--entrypoint", "python", IMAGE,
+            "-c", "open('/var/lib/oreo/probe', 'w').write('ok')",
+            check=False,
+        )  # fmt: skip
+        assert result.returncode == 0, result.stderr
+    finally:
+        docker("volume", "rm", "-f", volume, check=False)
+
+
 REQUIRED_ENV = {"DOCKER_GID": "996", "OREO_HEARTBEAT_TOKEN": "x"}
 
 

@@ -18,7 +18,7 @@ The external 5-minute monitor lives in the public repository `oreo-monitor`.
 | `oreo system [--json] [--notify]` | Fails if disk, memory, CPU temperature or load is over its threshold. |
 | `oreo heartbeat [--host] [--port]` | Serves `GET /heartbeat` for `oreo-monitor`: runs `health` and `system` on each request and returns their results as JSON, with HTTP `200` when everything passes and `503` when anything fails. |
 
-Checks exit `0` when everything passes and `1` when anything fails. `--notify` sends one ntfy alert listing the failures.
+Checks exit `0` when everything passes and `1` when anything fails. `--notify` sends an ntfy alert only when the result changes: "Oreo Cloud NEEDS ATTENTION" listing the failures when something starts failing (and again when the list of failures changes, or as a reminder every `OREO_ALERT_REMINDER_HOURS` while it keeps failing), and "Oreo Cloud OK" with how long it lasted when everything is back to normal. What is already failing is remembered in `OREO_STATE_DIR`, a named volume in `compose.yaml`; if sending fails, nothing is remembered, so the next run tries again.
 
 Configuration comes from environment variables:
 
@@ -26,6 +26,9 @@ Configuration comes from environment variables:
 | --- | --- | --- |
 | `OREO_NTFY_URL` | none, required for alerts | ntfy topic URL, e.g. `https://ntfy.sh/<topic>` |
 | `OREO_NTFY_TOKEN` | none | ntfy access token, if the topic is protected |
+| `OREO_STATE_DIR` | `/var/lib/oreo` | where `--notify` remembers what is already failing |
+| `OREO_ALERT_REMINDER_HOURS` | `6` | repeat the alert this often while a check keeps failing |
+| `OREO_TIMEZONE` | `Asia/Kolkata` | time zone for the times in alert messages |
 | `OREO_DOCKER_SOCKET` | `/var/run/docker.sock` | Docker socket for `health` |
 | `OREO_DISK_PATHS` | `/` | `system`, comma-separated paths to check |
 | `OREO_MOUNT_PATHS` | none | `system`, paths from `OREO_DISK_PATHS` that must be mount points; a path that is not mounted fails instead of reporting its parent's usage |

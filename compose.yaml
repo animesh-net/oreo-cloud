@@ -31,6 +31,8 @@ services:
     ports:
       - "${OREO_BIND_IP:-0.0.0.0}:8787:8787"
     volumes:
+      # Alert state (what is already failing), so alerts are sent on change, not every run.
+      - oreo-state:/var/lib/oreo
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # Only /mnt is shared, not the whole host. The container's own / sits on the NVMe,
       # so "/" already reports its usage. rslave: drives mounted after the container
@@ -41,3 +43,6 @@ services:
         read_only: true
         bind:
           propagation: rslave
+
+volumes:
+  oreo-state:
