@@ -35,7 +35,7 @@ Everything that runs on **oreo-cloud**, my Raspberry Pi 5 home server: checks, a
 
 | Title | Meaning |
 | --- | --- |
-| **Oreo Cloud NEEDS ATTENTION** | Something started failing. Sent once, again if what is failing changes, and as a reminder every 6 hours. |
+| **Oreo Cloud NEEDS ATTENTION** | Something started failing. Sent once, again if what is failing changes, and as a reminder every hour until it is fixed. |
 | **Oreo Cloud OK** | It is fixed, with how long it lasted. Also the title of a clean nightly report. |
 | **Oreo Cloud FAILED** | A backup or update step failed; the message says why. |
 
@@ -159,12 +159,11 @@ Everything else is optional and listed, with its default, at the bottom of `.env
 | Setting | Default | What it changes |
 | --- | --- | --- |
 | `OREO_BACKUP_TIME` | `03:30` | Time of the nightly backup |
-| `OREO_ALERT_REMINDER_HOURS` | `6` | How often a problem is repeated while it lasts |
 | `OREO_NET_QUIET_WINDOW` | `05:55-06:15` | When the router restarts itself |
 | `OREO_SITES` | the two sites | Websites the agent checks |
 | `OREO_IMAGE_TAG` | `latest` | Image to run; set a `sha-` tag to roll back |
 
-Alert thresholds live in `compose.yaml` under `x-thresholds`, so a change goes through a pull request like any other. After it is merged, `git pull && docker compose up -d` on the Pi applies it.
+Alert thresholds and the reminder interval live in `compose.yaml` under `x-thresholds`, so a change goes through a pull request like any other. After it is merged, `git pull && docker compose up -d` on the Pi applies it.
 
 | Setting | Value | Alerts when |
 | --- | --- | --- |
@@ -172,6 +171,7 @@ Alert thresholds live in `compose.yaml` under `x-thresholds`, so a change goes t
 | `OREO_CPU_MAX_PERCENT`, `OREO_CPU_SUSTAINED_SECONDS` | `50`, `120` | CPU usage stays over 50% for more than 2 minutes |
 | `OREO_TEMPERATURE_MAX_C` | `50` | The CPU is hotter than 50°C |
 | `OREO_DISK_MAX_PERCENT` | `90` | Any checked disk is more than 90% full |
+| `OREO_ALERT_REMINDER_HOURS` | `1` | How often a problem is repeated while it lasts |
 
 When the HDDs are mounted, add them to `x-drives` at the top of `compose.yaml` and to `OREO_STORAGE_MOUNTS` and `OREO_DRIVES`.
 
