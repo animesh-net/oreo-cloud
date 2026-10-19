@@ -61,7 +61,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-    mem_limit: 256m
+    # restic needs a few hundred MB while it backs up.
+    mem_limit: 1g
     logging:
       driver: json-file
       options:

@@ -58,7 +58,12 @@ def _run(command: Sequence[str]) -> subprocess.CompletedProcess:
 
 
 def _restic(run: Runner, *args: str) -> subprocess.CompletedProcess:
-    command = ["restic", "-r", str(REPOSITORY), "--password-file", str(PASSWORD_FILE), *args]
+    # The container's root filesystem is read-only, so restic's cache lives in the state volume.
+    cache = Path(os.environ.get("OREO_STATE_DIR", alerts.DEFAULT_STATE_DIR)) / "restic-cache"
+    command = [
+        "restic", "-r", str(REPOSITORY), "--password-file", str(PASSWORD_FILE),
+        "--cache-dir", str(cache), *args,
+    ]  # fmt: skip
     result = run(command)
     if result.returncode not in (0, 3):  # 3: some source files could not be read
         detail = (result.stderr.strip().splitlines() or ["no output"])[-1]
