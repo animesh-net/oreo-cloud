@@ -123,6 +123,15 @@ def test_run_finds_drives_by_label(host):
     assert cold == Check("Cold", False, "drive not found")
 
 
+def test_run_reads_label_link_without_resolving_host_root(host, monkeypatch):
+    # In the container, realpath turns /proc/1/root into "/" and cannot follow the link.
+    monkeypatch.setattr(drives.os.path, "realpath", lambda path: str(path))
+    monkeypatch.setattr(drives, "parent_disk", lambda partition: partition.rstrip("0123456789"))
+    asked = []
+    drives.run(lambda device: asked.append(device) or ata())
+    assert asked == ["/dev/sda"]
+
+
 def test_drives_command_prints_report_lines(host, monkeypatch, capsys):
     monkeypatch.setattr(drives, "read_smart", lambda device: ata())
     monkeypatch.setattr(drives, "run", lambda: [Check("Data", True, "healthy")])
