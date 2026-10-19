@@ -40,7 +40,7 @@ def _check_job(key: str, label: str, run: Callable[[], list]) -> Callable[[], No
 
 
 def default_jobs(start: float = 0.0) -> list[Job]:
-    """Network every 2 minutes, clock every minute, container and system checks every 5."""
+    """Network every 2 minutes, clock and system checks every minute, containers every 5."""
     return [
         Job("net", 120, net.run_once, start, needs_clock=False),
         Job(
@@ -51,7 +51,7 @@ def default_jobs(start: float = 0.0) -> list[Job]:
             needs_clock=False,
         ),
         Job("health", 300, _check_job("health", "Containers", health.run), start + 10),
-        Job("system", 300, _check_job("system", "System checks", system.run), start + 20),
+        Job("system", 60, _check_job("system", "System checks", system.run), start + 20),
         Job("storage", 1800, _check_job("storage", "Storage", storage.run), start + 30),
         Job("sites", 1800, _check_job("sites", "Websites", sites.run), start + 35),
         Job("backup", 60, backup.nightly, start + 40, background=True),

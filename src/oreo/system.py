@@ -1,7 +1,9 @@
-"""Host resource checks: disk, memory, CPU temperature and load."""
+"""Host resource checks: disk, memory, CPU temperature and CPU usage."""
 
 import os
 import shutil
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 from oreo.checks import Check
@@ -52,11 +54,49 @@ def check_temperature(
     return Check("temperature", celsius <= max_celsius, f"{celsius:.1f}°C")
 
 
-def check_load(max_per_cpu: float) -> Check:
-    # The 5-minute average, so a short burst (the backup, Immich's machine learning) is not
-    # reported as a problem.
-    per_cpu = os.getloadavg()[1] / (os.cpu_count() or 1)
-    return Check("load", per_cpu <= max_per_cpu, f"{per_cpu:.2f} per CPU (5 min)")
+# The previous /proc/stat reading and when CPU usage first went over the limit. They live as
+# long as the process, so the agent, which runs this check every minute, sees how long a
+# spike has lasted.
+_cpu_last: tuple[float, int, int] | None = None
+_cpu_high_since: float | None = None
+
+
+def _cpu_times(stat: Path) -> tuple[int, int]:
+    """(busy, total) jiffies from the first line of /proc/stat."""
+    fields = [int(value) for value in stat.read_text().splitlines()[0].split()[1:9]]
+    idle = fields[3] + fields[4]  # idle + iowait
+    return sum(fields) - idle, sum(fields)
+
+
+def check_cpu(
+    max_percent: float,
+    sustained_seconds: float,
+    stat: Path = Path("/proc/stat"),
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> Check:
+    """CPU usage since the previous call; fails once it stays over the limit long enough."""
+    global _cpu_last, _cpu_high_since
+    try:
+        if _cpu_last is None:
+            _cpu_last = (clock(), *_cpu_times(stat))
+            sleep(1)
+        start, busy_before, total_before = _cpu_last
+        now = clock()
+        busy, total = _cpu_times(stat)
+    except (OSError, ValueError, IndexError) as error:
+        return Check("cpu", False, f"cannot read {stat}: {error}")
+    _cpu_last = (now, busy, total)
+    elapsed = total - total_before
+    percent = (busy - busy_before) / elapsed * 100 if elapsed > 0 else 0.0
+    if percent <= max_percent:
+        _cpu_high_since = None
+        return Check("cpu", True, f"{percent:.0f}% used")
+    if _cpu_high_since is None:
+        _cpu_high_since = start
+    lasted = now - _cpu_high_since
+    detail = f"{percent:.0f}% used, over {max_percent:g}% for {lasted / 60:.0f} min"
+    return Check("cpu", lasted < sustained_seconds, detail)
 
 
 def run() -> list[Check]:
@@ -66,5 +106,10 @@ def run() -> list[Check]:
     checks = [check_disk(path, disk_max, path in must_mount) for path in paths]
     checks.append(check_memory(_env_float("OREO_MEMORY_MAX_PERCENT", 90)))
     checks.append(check_temperature(_env_float("OREO_TEMPERATURE_MAX_C", 75)))
-    checks.append(check_load(_env_float("OREO_LOAD_MAX_PER_CPU", 3)))
+    checks.append(
+        check_cpu(
+            _env_float("OREO_CPU_MAX_PERCENT", 90),
+            _env_float("OREO_CPU_SUSTAINED_SECONDS", 120),
+        )
+    )
     return checks

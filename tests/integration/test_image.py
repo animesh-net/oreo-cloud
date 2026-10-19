@@ -170,7 +170,7 @@ def test_one_off_system_checks_host_disk():
         IMAGE, "system", "--json",
     )  # fmt: skip
     names = [check["name"] for check in json.loads(result.stdout)["checks"]]
-    assert names == ["disk /host", "memory", "temperature", "load"]
+    assert names == ["disk /host", "memory", "temperature", "cpu"]
 
 
 def test_state_volume_is_writable_by_the_non_root_user():
