@@ -309,3 +309,15 @@ def test_compose_image_tag_can_be_pinned_for_rollback():
     )  # fmt: skip
     services = json.loads(result.stdout)["services"]
     assert {s["image"] for s in services.values()} == {"ghcr.io/animesh-net/oreo-cloud:sha-abc1234"}
+
+
+def test_agent_can_run_commands_on_the_host():
+    # The real thing the agent's network, clock, update and backup steps rely on: entering
+    # the host's namespaces as a privileged, host-PID root container.
+    result = docker(
+        "run", "--rm", "--privileged", "--pid", "host", "--user", "root",
+        "--entrypoint", "python", IMAGE, "-c",
+        "from oreo import net; r = net.host_run(['true']); print(r.returncode, r.stderr)",
+        check=False,
+    )  # fmt: skip
+    assert result.stdout.startswith("0 "), result.stdout + result.stderr

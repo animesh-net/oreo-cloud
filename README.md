@@ -39,6 +39,10 @@ Everything that runs on **oreo-cloud**, my Raspberry Pi 5 home server: checks, a
 
 While the network is down no alert can get out, so a Wi-Fi outage shows up as one "OK" message afterwards, saying what fixed it.
 
+This is how they look, from top to bottom: a nightly report, a container problem and its fix, and a Wi-Fi outage that the watchdog repaired. The messages come from the real code, fed with sample data.
+
+<img src="docs/images/alerts.png" alt="Example alerts on the phone" width="400">
+
 ## Set up on the Pi
 
 You need a GitHub token with only the `read:packages` permission, so the Pi can pull the private image.
@@ -86,6 +90,9 @@ You need a GitHub token with only the `read:packages` permission, so the Pi can 
 
 Run any command with `docker compose run --rm agent <command>`:
 
+![Output of the system and health checks](docs/images/checks.png)
+
+
 | Command | What it does |
 | --- | --- |
 | `system`, `health`, `storage`, `sites` | Run that check now and print the result. Add `--notify` to send alerts too. |
@@ -117,6 +124,7 @@ The last 10 images are kept. To roll back, add `OREO_IMAGE_TAG=sha-<commit>` to 
 | Docker itself is down | Nothing inside Docker can fix this. Connect over Tailscale with SSH, then run `sudo systemctl restart docker` and `docker compose up -d`. |
 | A backup failed | The alert says which step failed. Fix that, then run `docker compose run --rm agent backup`. |
 | An old stopped container keeps alerting | Remove it, or give it the label `oreo.ignore=true`. |
+| `docker compose up` says `/mnt` "is not a shared or slave mount" | Run `sudo mount --make-rshared /`. Ubuntu with systemd already does this at boot, so it only happens on unusual setups. |
 
 ## Settings
 

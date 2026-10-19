@@ -45,7 +45,10 @@ def check_mount(mount: str, mounts: dict[str, bool], host_root: Path = HOST_ROOT
         return Check(name, False, "not mounted")
     if mounts[mount]:
         return Check(name, False, "read-only")
-    usage = shutil.disk_usage(host_root / mount.lstrip("/"))
+    try:
+        usage = shutil.disk_usage(host_root / mount.lstrip("/"))
+    except OSError as error:  # no host access: not the privileged agent
+        return Check(name, False, f"cannot read it: {error}")
     percent = round(usage.used / usage.total * 100)
     if percent >= FULL_PERCENT:
         return Check(name, False, f"{percent}% full")

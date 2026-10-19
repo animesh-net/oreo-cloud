@@ -170,7 +170,8 @@ def copy_database_dump(now: datetime) -> str:
     kept = len(list(DUMP_COPIES.glob("*.sql.gz")))
     size = drives.human(newest.stat().st_size)
     return (
-        f"✅ Immich database: {size} dump, copied to flash drive and verified, {kept} copies kept"
+        f"✅ Immich database: {size} dump, copied to flash drive and verified, "
+        f"{kept} {'copy' if kept == 1 else 'copies'} kept"
     )
 
 
