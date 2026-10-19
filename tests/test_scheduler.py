@@ -55,11 +55,11 @@ def test_unexpected_error_is_logged_not_raised():
 def test_default_jobs_cover_network_health_and_system():
     jobs = {job.name: job for job in scheduler.default_jobs(100)}
     assert {name: job.every for name, job in jobs.items()} == {
-        "net": 120, "clock": 60, "health": 300, "system": 300,
+        "net": 120, "clock": 60, "health": 300, "system": 300, "storage": 1800,
     }  # fmt: skip
     assert not jobs["net"].needs_clock
     assert not jobs["clock"].needs_clock
-    assert jobs["health"].needs_clock and jobs["system"].needs_clock
+    assert jobs["health"].needs_clock and jobs["system"].needs_clock and jobs["storage"].needs_clock
     assert jobs["net"].next_due == 100
     assert jobs["health"].next_due > 100
 

@@ -207,6 +207,17 @@ def test_agent_runs_jobs_stays_alive_and_stops_promptly(containers):
         docker("volume", "rm", "-f", volume, check=False)
 
 
+def test_storage_reads_the_hosts_mounts_with_host_access():
+    result = docker(
+        "run", "--rm", "--privileged", "--pid", "host", "--user", "root",
+        "-e", "OREO_STORAGE_MOUNTS=/", IMAGE, "storage", "--json",
+        check=False,
+    )  # fmt: skip
+    checks = {c["name"]: c for c in json.loads(result.stdout)["checks"]}
+    assert checks["mount /"]["ok"], checks["mount /"]
+    assert "disk errors" in checks
+
+
 def test_image_can_enter_host_namespaces():
     # `oreo net` runs the host's ip, ping, networkctl and netplan through nsenter.
     assert docker("run", "--rm", "--entrypoint", "nsenter", IMAGE, "--version").returncode == 0
