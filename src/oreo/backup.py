@@ -82,6 +82,9 @@ def back_up_settings(run: Runner, now: datetime) -> str:
     packages = net.host_run(["apt-mark", "showmanual"])
     if packages.returncode == 0:
         PACKAGE_LIST.write_text(packages.stdout)
+    # A backup cut short (the agent restarted mid-run) leaves restic's lock behind, and every
+    # later run would fail on it. Plain `unlock` removes only locks whose process is gone.
+    _restic(run, "unlock")
     args = ["backup", "--json", "--host", "oreo-cloud", "--exclude-caches", *SOURCES]
     for exclude in EXCLUDES:
         args += ["--exclude", exclude]

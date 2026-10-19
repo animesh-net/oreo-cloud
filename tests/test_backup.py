@@ -117,9 +117,10 @@ def test_report_matches_the_nightly_message(pi, sent):
         "💾 Flash drive: 52G free"
     )
     assert kwargs == {"title": "Oreo Cloud OK", "tags": "white_check_mark"}
-    assert restic.verbs() == ["backup", "snapshots"]
-    assert "--host" in restic.commands[0] and "oreo-cloud" in restic.commands[0]
-    assert restic.commands[0][6].endswith("state/restic-cache")
+    assert restic.verbs() == ["unlock", "backup", "snapshots"]
+    assert "--remove-all" not in restic.commands[0]
+    assert "--host" in restic.commands[1] and "oreo-cloud" in restic.commands[1]
+    assert restic.commands[1][6].endswith("state/restic-cache")
 
 
 def test_dump_is_copied_and_old_copies_removed(pi, sent):
@@ -174,6 +175,13 @@ def test_missing_source_skips(pi, sent):
     assert not ok
     assert "is missing, job skipped" in sent[0][0]
     assert restic.commands == []
+
+
+def test_failed_unlock_stops_before_backing_up(pi, sent):
+    ok, restic = go(sent, FakeRestic(fail="unlock"))
+    assert not ok
+    assert restic.verbs() == ["unlock"]
+    assert sent[0][0] == "osbackup: restic unlock failed: Fatal: repository is locked"
 
 
 def test_restic_failure_alerts(pi, sent):
