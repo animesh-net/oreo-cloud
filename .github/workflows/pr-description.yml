@@ -1,0 +1,30 @@
+name: PR description
+
+# Removes co-author, agent-session and "generated/requested by" lines from pull request
+# descriptions. It edits silently: it never fails and never comments. Edits made with
+# GITHUB_TOKEN do not start another run, so it cannot loop.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  description:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Tidy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # Read the description now, not from the event: it may have changed since.
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '.body // ""' > body.md
+          if ! python scripts/clean_pr_body.py < body.md > cleaned.md; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/pulls/$PR" -F body=@cleaned.md > /dev/null
+          fi

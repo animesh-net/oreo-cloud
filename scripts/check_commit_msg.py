@@ -9,11 +9,17 @@ from pathlib import Path
 
 MAX_LENGTH = 72
 SCISSORS = "# ------------------------ >8 ------------------------"
-AI_ATTRIBUTION = re.compile(
-    r"(co-authored-by|co-committed-by):.*(claude|anthropic|copilot|openai|gpt|gemini)"
-    r"|generated (by|with) .*claude",
+# Lines that are never allowed in a commit message or a pull request description: any
+# co-author or agent trailer, an agent's session link, or "generated/requested by" an agent.
+AGENTS = r"claude|anthropic|copilot|openai|chatgpt|gpt|gemini|codex|cursor|\bai\b|llm|agent"
+FORBIDDEN_LINE = re.compile(
+    r"^\W*(co-authored-by|co-committed-by|claude-session|generated-by|requested-by|assisted-by)\s*:"
+    r"|claude\.ai/code"
+    r"|(generated|requested|created|written|authored)\s+(by|with|using)\b.*(" + AGENTS + ")",
     re.IGNORECASE,
 )
+# Deliberately vague, so the check does not advertise what it looks for.
+NOT_ALLOWED = "message contains a line that is not allowed"
 
 
 def problems(message: str) -> list[str]:
@@ -34,8 +40,8 @@ def problems(message: str) -> list[str]:
         found.append("never commit WIP")
     if len(lines) > 1:
         found.append("message must be a single line with no body")
-    if AI_ATTRIBUTION.search(message):
-        found.append("message contains AI attribution")
+    if any(FORBIDDEN_LINE.search(line) for line in lines):
+        found.append(NOT_ALLOWED)
     return found
 
 
