@@ -13,13 +13,17 @@ import os
 import re
 import subprocess
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from oreo import notify
-from oreo.alerts import clock
+from oreo.alerts import DEFAULT_TIMEZONE, clock
 
 DEFAULT_INTERFACE = "wlan0"
+# The router restarts itself every day at 06:00. An outage inside this window is expected:
+# no repair is attempted and, if it ends inside the window too, no message is sent.
+DEFAULT_QUIET_WINDOW = "05:55-06:15"
 HOST_PREFIX = ("nsenter", "--target", "1", "--mount", "--uts", "--ipc", "--net", "--pid", "--")
 
 # Failed checks in a row before each recovery step. The first is cheap, the second restarts
@@ -56,6 +60,16 @@ def _save(state: dict) -> None:
     temporary.replace(path)
 
 
+def in_quiet_window(moment: datetime) -> bool:
+    window = os.environ.get("OREO_NET_QUIET_WINDOW", DEFAULT_QUIET_WINDOW).strip()
+    if not window:
+        return False
+    start, end = (time.fromisoformat(part.strip()) for part in window.split("-"))
+    zone = ZoneInfo(os.environ.get("OREO_TIMEZONE", DEFAULT_TIMEZONE))
+    local = moment.astimezone(zone).time()
+    return start <= local < end if start <= end else local >= start or local < end
+
+
 def _gateway(run: Runner) -> str | None:
     result = run(["ip", "-4", "route", "show", "default"])
     match = re.search(r"default via (\S+)", result.stdout) if result.returncode == 0 else None
@@ -89,6 +103,9 @@ def run_once(
     if _gateway_answers(run, _gateway(run)):
         if state.get("down_since"):
             since = datetime.fromisoformat(state["down_since"])
+            if in_quiet_window(since) and in_quiet_window(now):
+                _save({})  # the daily router restart, over before the window closed
+                return True
             minutes = max(1, round((now - since).total_seconds() / 60))
             recovery = state.get("action") or "none needed, it came back by itself"
             send(
@@ -101,6 +118,11 @@ def run_once(
             )
             _save({})
         return True
+
+    if in_quiet_window(now):
+        # Count from zero once the window closes, so a real outage still gets repaired.
+        _save({**state, "fails": 0, "down_since": state.get("down_since") or now.isoformat()})
+        return False
 
     fails = state.get("fails", 0) + 1
     state = {
