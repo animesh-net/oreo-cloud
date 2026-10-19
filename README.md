@@ -14,6 +14,7 @@ The external 5-minute monitor lives in the public repository `oreo-monitor`.
 | Command | What it does |
 | --- | --- |
 | `oreo notify MESSAGE [--title] [--priority] [--tags]` | Sends a push notification through ntfy. |
+| `oreo drives [--json] [--notify]` | One line per drive in `OREO_DRIVES`, found by filesystem label: SMART status, life left, data written, days powered on (left out for the NVMe, whose counter is unreliable) and free space, worded as in the nightly report. Fails on a failed SMART status, reallocated or uncorrectable sectors, cable (CRC) errors, NVMe media errors or critical warnings. Runs `smartctl` against the host's devices, so it needs host access like `net`. |
 | `oreo health [--json] [--notify]` | Fails if any Docker container is not running or reports `unhealthy`. Containers labelled `oreo.ignore=true` are skipped. |
 | `oreo system [--json] [--notify]` | Fails if disk, memory, CPU temperature or load is over its threshold. |
 | `oreo agent` | Runs the recurring jobs in the foreground: `net` every 2 minutes, a clock check every minute, `health` and `system` every 5 and `storage` every 30 (with alerts on change). While the host's clock is not synchronised with NTP (asked through the host's `timedatectl`), `health` and `system` are held back and retried a minute later, and the clock check alerts "Clock: not synchronised with NTP"; `net` is never held back, because without network the clock cannot sync. One failing job never stops the others, a signal stops it at once, and it touches `agent.alive` in the state directory every 15 seconds for its health check. Needs host access like `net`. |
@@ -33,6 +34,7 @@ Configuration comes from environment variables:
 | `OREO_ALERT_REMINDER_HOURS` | `6` | repeat the alert this often while a check keeps failing |
 | `OREO_TIMEZONE` | `Asia/Kolkata` | time zone for the times in alert messages |
 | `OREO_STORAGE_MOUNTS` | `/,/boot/firmware,/mnt/data-hot-ssd1,/mnt/osbackup` | `storage`, host mount points that must be present |
+| `OREO_DRIVES` | `nvme-root=System (NVMe \| nvme-root);data-hot-ssd1=Data (Hot Tier \| data-hot-ssd1)` | `drives`, `label=Name` pairs separated by `;` |
 | `OREO_NET_INTERFACE` | `wlan0` | `net`, the Wi-Fi interface to renew |
 | `OREO_NET_QUIET_WINDOW` | `05:55-06:15` | `net`, local time when the router restarts itself; empty turns it off |
 | `OREO_DOCKER_SOCKET` | `/var/run/docker.sock` | Docker socket for `health` |
