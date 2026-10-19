@@ -9,7 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from oreo import alerts, clock, health, net, notify, storage, system
+from oreo import alerts, backup, clock, health, net, notify, storage, system
 
 TICK_SECONDS = 15
 # A job that needs the clock waits this long before trying again while it is not synchronised.
@@ -26,6 +26,10 @@ class Job:
     # Jobs that time-stamp or schedule anything wait for a synchronised clock. The network
     # watchdog does not: without network there is no clock sync, so it must run first.
     needs_clock: bool = True
+    # Long jobs run in their own thread so the network watchdog never waits behind them; a
+    # background job is not started again while its previous run is still going.
+    background: bool = False
+    thread: threading.Thread | None = None
 
 
 def _check_job(key: str, label: str, run: Callable[[], list]) -> Callable[[], None]:
@@ -49,6 +53,7 @@ def default_jobs(start: float = 0.0) -> list[Job]:
         Job("health", 300, _check_job("health", "Containers", health.run), start + 10),
         Job("system", 300, _check_job("system", "System checks", system.run), start + 20),
         Job("storage", 1800, _check_job("storage", "Storage", storage.run), start + 30),
+        Job("backup", 60, backup.nightly, start + 40, background=True),
     ]
 
 
@@ -75,12 +80,20 @@ def run_due(
                 log(f"oreo agent: {job.name} held back, clock not synchronised")
                 continue
         job.next_due = now + job.every
-        try:
-            job.run()
-        except (notify.NotifyError, OSError) as error:
-            log(f"oreo agent: {job.name}: {error}")
-        except Exception as error:  # a bug in one job must not end the agent
-            log(f"oreo agent: {job.name} crashed: {error!r}")
+        if not job.background:
+            _run_job(job, log)
+        elif job.thread is None or not job.thread.is_alive():
+            job.thread = threading.Thread(target=_run_job, args=(job, log), daemon=True)
+            job.thread.start()
+
+
+def _run_job(job: Job, log: Callable[[str], None]) -> None:
+    try:
+        job.run()
+    except (notify.NotifyError, OSError) as error:
+        log(f"oreo agent: {job.name}: {error}")
+    except Exception as error:  # a bug in one job must not end the agent
+        log(f"oreo agent: {job.name} crashed: {error!r}")
 
 
 def _touch_alive() -> None:
