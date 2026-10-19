@@ -15,9 +15,11 @@ jobs:
   description:
     runs-on: ubuntu-latest
     steps:
+      # The cleaner always comes from main, so a branch that predates it, or changes it,
+      # cannot affect what runs here.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.repository.default_branch }}
       - name: Tidy
         env:
           GH_TOKEN: ${{ github.token }}
@@ -25,6 +27,13 @@ jobs:
         run: |
           # Read the description now, not from the event: it may have changed since.
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '.body // ""' > body.md
-          if ! python scripts/clean_pr_body.py < body.md > cleaned.md; then
+          # Exit 0: already clean. Exit 1: something was removed. Anything else means the
+          # cleaner did not run, and the description is left exactly as it is. An empty
+          # result is never saved.
+          status=0
+          python scripts/clean_pr_body.py < body.md > cleaned.md || status=$?
+          if [ "$status" -eq 1 ] && [ -s cleaned.md ]; then
             gh api -X PATCH "repos/$GITHUB_REPOSITORY/pulls/$PR" -F body=@cleaned.md > /dev/null
+          elif [ "$status" -gt 1 ]; then
+            echo "Cleaner exited with $status; description left unchanged."
           fi
