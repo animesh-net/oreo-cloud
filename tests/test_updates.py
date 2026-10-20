@@ -122,14 +122,15 @@ def test_summary_lines(host):
         "👉 Update the OS: os-update, or: "
         "cd ~/oreo-cloud && docker compose run --rm agent update os",
         "⬆️ Images: newer immich-server",
-        "👉 Update the images: cd ~/oreo-cloud && docker compose run --rm agent update all"
+        "👉 Update the images: image-update, or: "
+        "cd ~/oreo-cloud && docker compose run --rm agent update all"
         " (read Immich's release notes first)",
     ]
 
 
 def test_a_newer_oreo_image_is_pulled_before_update_all():
     assert updates._images_command(["oreo-cloud", "caddy"]) == (
-        "cd ~/oreo-cloud && docker compose pull && docker compose up -d"
+        "image-update, or: cd ~/oreo-cloud && docker compose pull && docker compose up -d"
         " && docker compose run --rm agent update all"
     )
 

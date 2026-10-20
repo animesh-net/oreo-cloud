@@ -131,10 +131,10 @@ cd ~/oreo-cloud && docker compose pull && docker compose up -d && docker compose
 
 Run `update os` on its own, away from the 03:30 backup and the router restart at 06:00, then `sudo reboot` if `update status` says a reboot is needed. Ubuntu installs security updates by itself unless that is turned off on the Pi: `/etc/apt/apt.conf.d/20auto-upgrades` with `APT::Periodic::Unattended-Upgrade "0";` stops it, and `APT::Periodic::Update-Package-Lists "1";` keeps the daily package list refresh the report reads.
 
-To run it as just `os-update`, add this alias once on the Pi:
+Two short names do the same: `os-update` for the OS and `image-update` for the line above. This sets both up once on the Pi, replacing any older definitions of them:
 
 ```bash
-echo "alias os-update='docker compose -f ~/oreo-cloud/compose.yaml run --rm agent update os'" >> ~/.bashrc && source ~/.bashrc
+sed -i '/^alias os-update=/d;/^alias image-update=/d' ~/.bashrc ~/.bash_aliases 2>/dev/null; printf '%s\n' "alias os-update='docker compose -f ~/oreo-cloud/compose.yaml run --rm agent update os'" "alias image-update='(cd ~/oreo-cloud && docker compose pull && docker compose up -d && docker compose run --rm agent update all && docker compose run --rm agent update status)'" >> ~/.bashrc && source ~/.bashrc
 ```
 
 ### Update or roll back this image
