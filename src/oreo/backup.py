@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from oreo import alerts, clock, drives, net, notify, storage
+from oreo import alerts, clock, drives, net, notify, storage, updates
 from oreo.checks import Check
 
 HOST = Path("/proc/1/root")
@@ -254,6 +254,7 @@ def run(
     store = storage.summary(storage.run())
     report = "\n".join(
         [settings, database, *health, store, f"💾 Flash drive: {_flash_free()} free"]
+        + updates.report()
     )
     # The backup itself succeeded either way; a report that could not be sent is only logged.
     if "❌" in report or "⚠" in report:

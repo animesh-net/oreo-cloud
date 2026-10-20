@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from oreo import backup, clock, drives, net, storage
+from oreo import backup, clock, drives, net, storage, updates
 from oreo.checks import Check
 
 # 03:30 in Asia/Kolkata on Monday 19 October 2026
@@ -87,6 +87,7 @@ def pi(tmp_path, monkeypatch):
         drives, "run", lambda: [Check("Data (Hot Tier | data-hot-ssd1)", True, "healthy")]
     )
     monkeypatch.setattr(backup.shutil, "disk_usage", lambda path: Usage(100, 0, 52 * 1024**3))
+    monkeypatch.setattr(updates, "report", lambda: ["✅ OS: up to date", "✅ Images: up to date"])
     monkeypatch.setattr(
         net, "host_run", lambda command: subprocess.CompletedProcess(command, 3, "pkg-a\n", "")
     )
@@ -114,7 +115,9 @@ def test_report_matches_the_nightly_message(pi, sent):
         "✅ Immich database: 2K dump, copied to flash drive and verified, 1 copy kept\n"
         "✅ Data (Hot Tier | data-hot-ssd1): healthy\n"
         "✅ Storage: all drives mounted, none nearly full, no disk errors logged\n"
-        "💾 Flash drive: 52G free"
+        "💾 Flash drive: 52G free\n"
+        "✅ OS: up to date\n"
+        "✅ Images: up to date"
     )
     assert kwargs == {"title": "Oreo Cloud OK", "tags": "white_check_mark"}
     assert restic.verbs() == ["unlock", "backup", "snapshots"]
@@ -138,6 +141,15 @@ def test_pre_update_dump_does_not_count_as_a_fresh_immich_dump(pi, sent):
     ok, _ = go(sent)
     assert not ok
     assert "no Immich database dump newer than 36 hours" in sent[0][0]
+
+
+def test_available_updates_are_listed_but_keep_the_report_ok(pi, sent, monkeypatch):
+    lines = ["⬆️ OS: 3 updates available, 1 security (update os)", "⬆️ Images: newer immich-server"]
+    monkeypatch.setattr(updates, "report", lambda: lines)
+    go(sent)
+    [(message, kwargs)] = sent
+    assert message.endswith("\n".join(lines))
+    assert kwargs["title"] == "Oreo Cloud OK"
 
 
 def test_pre_update_dumps_are_copied_but_the_report_names_immichs_own(pi, sent):

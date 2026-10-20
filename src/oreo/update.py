@@ -1,7 +1,6 @@
-"""On-demand updates of the containers: Immich (database dump first), Caddy, unused images.
+"""On-demand updates: Immich (database dump first), Caddy, unused images and the OS.
 
-Port of the container part of the host's oreo-update. OS updates stay a manual host command:
-upgrading the OS can restart Docker itself, which would end this container mid-way.
+Port of the host's oreo-update. Nothing here runs on a schedule; each update is started by hand.
 Commands run on the host through nsenter, so Immich and Caddy keep their own compose files.
 Every option is safe to run again.
 """
@@ -14,7 +13,7 @@ from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
 
-from oreo import backup, drives, net, notify
+from oreo import backup, drives, net, notify, updates
 
 IMMICH = "/home/animesh/immich"
 CADDY = "/home/animesh/caddy"
@@ -25,6 +24,14 @@ DUMPS = HOST / "mnt/data-hot-ssd1/library/backups"
 MIN_DUMP_BYTES = 5_000_000
 KEEP_PRE_UPDATE_DUMPS = 3
 HEALTHY_WAIT_SECONDS = 180
+# The OS upgrade runs as a host service, not in this container: upgrading Docker restarts it,
+# which would end this container but must not end apt halfway through.
+OS_UNIT = "oreo-os-update"
+OS_SCRIPT = (
+    "export DEBIAN_FRONTEND=noninteractive; apt-get update && "
+    "apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold "
+    "--with-new-pkgs upgrade && apt-get -y autoremove"
+)
 
 Runner = Callable[..., subprocess.CompletedProcess]  # run(command, cwd=None)
 Output = Callable[[str], None]
@@ -157,18 +164,54 @@ def prune(run: Runner = host, out: Output = print) -> bool:
     return result.returncode == 0
 
 
-def status(run: Runner = host, out: Output = print) -> bool:
-    out("== STATUS ==")
-    reboot = (HOST / "var/run/reboot-required").exists()
+def _reboot_line(out: Output) -> None:
+    reboot = updates.reboot_needed()
     out(f"Reboot needed: {'yes (run: sudo reboot; never done automatically)' if reboot else 'no'}")
-    out("Containers:")
-    out(_inspect(run, "ps", "--format", "  {{.Names}}  {{.Image}}  {{.Status}}"))
-    out(f"Free space on /: {drives.human(shutil.disk_usage(HOST).free)}")
-    out("OS updates are manual: sudo apt update && sudo apt upgrade")
+
+
+def os_update(
+    run: Runner = host, out: Output = print, *, now: Callable[[], float] = time.time
+) -> bool:
+    out("== OS ==")
+    out(f"Running apt as the host service {OS_UNIT}. This can take several minutes.")
+    out("If Docker restarts during it, this command ends but the upgrade carries on.")
+    since = f"@{int(now())}"
+    result = run(
+        ["systemd-run", f"--unit={OS_UNIT}", "--collect", "--wait", "--quiet",
+         "/bin/sh", "-c", OS_SCRIPT]
+    )  # fmt: skip
+    log = run(["journalctl", "--unit", OS_UNIT, "--since", since, "--output", "cat", "--no-pager"])
+    out("\n".join(log.stdout.splitlines()[-15:]))
+    if result.returncode != 0:
+        if "already" in result.stderr:
+            out("An OS update is already running. Nothing more was started.")
+        else:
+            out(f"OS update FAILED. Full log: journalctl -u {OS_UNIT}")
+        return False
+    out("OS update finished.")
+    _reboot_line(out)
     return True
 
 
-ACTIONS = {"status": [status], "immich": [immich], "caddy": [caddy], "prune": [prune]}
+def status(run: Runner = host, out: Output = print) -> bool:
+    out("== STATUS ==")
+    _reboot_line(out)
+    out("Containers:")
+    out(_inspect(run, "ps", "--format", "  {{.Names}}  {{.Image}}  {{.Status}}"))
+    out(f"Free space on /: {drives.human(shutil.disk_usage(HOST).free)}")
+    out("Available updates (nothing installs by itself):")
+    for line in updates.summary():
+        out(f"  {line}")
+    return True
+
+
+ACTIONS = {
+    "status": [status],
+    "immich": [immich],
+    "caddy": [caddy],
+    "prune": [prune],
+    "os": [os_update],
+}
 ACTIONS["all"] = [immich, caddy, prune]
 
 
