@@ -1,5 +1,6 @@
 import subprocess
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -43,6 +44,7 @@ class FakeDocker:
 def dumps(tmp_path, monkeypatch):
     monkeypatch.setattr(update, "DUMPS", tmp_path)
     monkeypatch.setattr(update, "HOST", tmp_path / "host")
+    monkeypatch.setattr(update.updates, "HOST", tmp_path / "host")
     monkeypatch.setattr(backup, "LOCK_FILE", tmp_path / "lock")
     return tmp_path
 
@@ -127,9 +129,53 @@ def test_update_waits_for_a_running_backup(dumps, monkeypatch):
     assert lines == ["A backup or another job is running. Try again later."]
 
 
-def test_update_command_has_no_os_option():
-    with pytest.raises(SystemExit):
-        cli.main(["update", "os"])
+class FakeHost:
+    def __init__(self, code=0, stderr=""):
+        self.code, self.stderr, self.commands = code, stderr, []
+
+    def __call__(self, command, cwd=None):
+        self.commands.append(list(command))
+        if command[0] == "journalctl":
+            return subprocess.CompletedProcess(
+                command, 0, "Unpacking libc6\nSetting up libc6\n", ""
+            )
+        return subprocess.CompletedProcess(command, self.code, "", self.stderr)
+
+
+def test_os_update_runs_apt_as_a_host_service_and_shows_its_log(dumps):
+    fake, lines = FakeHost(), []
+    assert update.os_update(fake, lines.append, now=lambda: 1_800_000_000)
+    command = fake.commands[0]
+    assert command[:5] == ["systemd-run", "--unit=oreo-os-update", "--collect", "--wait", "--quiet"]
+    assert "--with-new-pkgs upgrade" in command[-1] and "apt-get -y autoremove" in command[-1]
+    assert "@1800000000" in fake.commands[1]
+    assert "Unpacking libc6\nSetting up libc6" in lines
+    assert "OS update finished." in lines
+    assert "Reboot needed: no" in lines
+
+
+def test_os_update_reports_a_failure_and_a_run_already_going(dumps):
+    lines = []
+    assert not update.os_update(FakeHost(1), lines.append)
+    assert lines[-1] == "OS update FAILED. Full log: journalctl -u oreo-os-update"
+    lines = []
+    already = FakeHost(1, "Unit oreo-os-update.service was already loaded")
+    assert not update.os_update(already, lines.append)
+    assert lines[-1] == "An OS update is already running. Nothing more was started."
+
+
+def test_os_is_an_update_option_but_not_part_of_all():
+    assert update.ACTIONS["os"] == [update.os_update]
+    assert update.os_update not in update.ACTIONS["all"]
+    assert cli.build_parser().parse_args(["update", "os"]).action == "os"
+
+
+def test_status_lists_available_updates(dumps, monkeypatch):
+    monkeypatch.setattr(update.updates, "summary", lambda: ["✅ OS: up to date"])
+    monkeypatch.setattr(update.shutil, "disk_usage", lambda path: SimpleNamespace(free=2048))
+    lines = []
+    assert update.status(FakeDocker(), lines.append)
+    assert lines[-2:] == ["Available updates (nothing installs by itself):", "  ✅ OS: up to date"]
 
 
 def test_host_commands_have_no_time_limit_and_start_in_the_folder(monkeypatch):

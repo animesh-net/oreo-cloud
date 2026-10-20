@@ -179,8 +179,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     update_cmd = commands.add_parser(
         "update",
-        help="update Immich (database dump first) or Caddy, or remove unused images; "
-        "OS updates stay manual (needs the privileged agent service)",
+        help="update Immich (database dump first), Caddy or the OS, remove unused images, or "
+        "show what can be updated; nothing updates by itself (needs the privileged agent service)",
     )
     update_cmd.add_argument("action", choices=sorted(update.ACTIONS))
     update_cmd.set_defaults(handler=_cmd_update)

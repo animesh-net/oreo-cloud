@@ -30,7 +30,7 @@ Everything that runs on **oreo-cloud**, my Raspberry Pi 5 home server: checks, a
 | Websites | Every 30 minutes | `cloud.animesh.org.in` and `pi.animesh.org.in` answer, and their certificates have at least 14 days left. |
 | Backup age | Every 30 minutes | Alerts if the last good backup is more than 26 hours old. |
 | Setup | Every 30 minutes | Alerts if the Pi's `compose.yaml` differs from the one in the image, with the command to refresh it. |
-| Nightly backup | 03:30 | Saves the Pi's settings with restic and copies Immich's database dump to the flash drive, then sends the nightly report. Runs later if the Pi was off at 03:30. |
+| Nightly backup | 03:30 | Saves the Pi's settings with restic and copies Immich's database dump to the flash drive, then sends the nightly report. The report also lists available OS, security and Docker updates, and a pending reboot; nothing is installed by itself. Runs later if the Pi was off at 03:30. |
 
 ### Alerts on my phone
 
@@ -115,14 +115,27 @@ Run any command with `docker compose run --rm agent <command>`:
 | `system`, `health`, `storage`, `sites` | Run that check now and print the result. Add `--notify` to send alerts too. |
 | `drives` | Drive health: status, life left, data written, free space. |
 | `backup` | Run the nightly backup now. |
-| `update status` | Containers, free space, and whether the Pi needs a reboot. |
+| `update status` | Containers, free space, whether the Pi needs a reboot, and which updates are available. |
 | `update immich` | Update Immich. Takes a database dump first and stops if the dump looks wrong. |
 | `update caddy` | Rebuild Caddy on the latest base image. |
 | `update prune` | Remove unused Docker images. |
 | `update all` | Immich, then Caddy, then prune. |
+| `update os` | Upgrade Ubuntu's packages (`apt-get update`, `upgrade`, `autoremove`), keeping changed config files. Runs as the host service `oreo-os-update`, so an upgrade that restarts Docker does not cut it off; its log is `journalctl -u oreo-os-update`. Never reboots. |
 | `notify "message"` | Send a test notification. |
 
-OS updates are not included, because upgrading the OS can restart Docker mid-way. Run them on the Pi yourself: `sudo apt update && sudo apt upgrade`.
+Nothing is updated automatically. The nightly report says what is available, and each update is started by hand. To update everything except the OS in one line:
+
+```bash
+cd ~/oreo-cloud && docker compose pull && docker compose up -d && docker compose run --rm agent update all && docker compose run --rm agent update status
+```
+
+Run `update os` on its own, away from the 03:30 backup and the router restart at 06:00, then `sudo reboot` if `update status` says a reboot is needed. Ubuntu installs security updates by itself unless that is turned off on the Pi: `/etc/apt/apt.conf.d/20auto-upgrades` with `APT::Periodic::Unattended-Upgrade "0";` stops it, and `APT::Periodic::Update-Package-Lists "1";` keeps the daily package list refresh the report reads.
+
+To run it as just `os-update`, add this alias once on the Pi:
+
+```bash
+echo "alias os-update='docker compose -f ~/oreo-cloud/compose.yaml run --rm agent update os'" >> ~/.bashrc && source ~/.bashrc
+```
 
 ### Update or roll back this image
 

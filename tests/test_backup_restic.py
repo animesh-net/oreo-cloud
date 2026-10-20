@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from oreo import backup, clock, drives, net, storage
+from oreo import backup, clock, drives, net, storage, updates
 from oreo.checks import Check
 
 if shutil.which("restic") is None and os.environ.get("OREO_REQUIRE_RESTIC"):
@@ -60,6 +60,7 @@ def pi(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "read_mounts", lambda: {"/flash": False})
     monkeypatch.setattr(storage, "run", lambda: [Check("disk errors", True, "none")])
     monkeypatch.setattr(drives, "run", lambda: [Check("Data", True, "healthy")])
+    monkeypatch.setattr(updates, "report", lambda: ["✅ OS: up to date"])
     monkeypatch.setattr(
         net, "host_run", lambda command: subprocess.CompletedProcess(command, 0, "pkg\n", "")
     )
