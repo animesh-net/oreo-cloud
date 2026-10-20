@@ -17,7 +17,8 @@ from oreo import net
 
 HOST = Path("/proc/1/root")
 # Caddy is built on the Pi, so its own image has no registry to compare with; its base images do.
-CADDY_DOCKERFILE = HOST / "home/animesh/caddy/Dockerfile"
+CADDY = "/home/animesh/caddy"
+CADDY_DOCKERFILE = HOST / CADDY.lstrip("/") / "Dockerfile"
 # Registry logins, for private images such as this one.
 DOCKER_CONFIGS = (HOST / "home/animesh/.docker/config.json", HOST / "root/.docker/config.json")
 DOCKER_PACKAGES = ("docker", "containerd", "runc")
@@ -149,10 +150,16 @@ def newer_images(
 ) -> tuple[list[str], list[str]]:
     """Images, by short name, with a newer version in their registry, and those that could
     not be checked. Images built on the Pi are skipped; their base images are checked."""
-    result = run(["docker", "ps", "--format", "{{.Image}}"])
+    result = run(
+        ["docker", "ps", "--format",
+         '{{.Image}}\t{{.Label "com.docker.compose.project.working_dir"}}']
+    )  # fmt: skip
     if result.returncode != 0:
         raise UpdateCheckError("docker ps failed")
-    refs = list(dict.fromkeys([*result.stdout.split(), *_base_images()]))
+    running = [line.split("\t") + [""] for line in result.stdout.splitlines() if line.strip()]
+    # Caddy's image is built from its folder, so it can carry a digest no registry knows.
+    pulled = [image for image, folder, *_ in running if folder != CADDY]
+    refs = list(dict.fromkeys([*pulled, *_base_images()]))
     newer, unchecked = [], []
     for ref in refs:
         if parse_reference(ref) is None:

@@ -19,19 +19,25 @@ Conf libc6 (2.39-0ubuntu8.4 Ubuntu:24.04/noble-updates [arm64])
 """
 )
 
-RUNNING = "ghcr.io/immich-app/immich-server:release\nghcr.io/animesh-net/oreo-cloud:latest\n"
-PINNED = "ghcr.io/immich-app/postgres:14@sha256:abc\n"
+RUNNING = (
+    "ghcr.io/immich-app/immich-server:release\t/home/animesh/immich\n"
+    "ghcr.io/animesh-net/oreo-cloud:latest\t/home/animesh/oreo-cloud\n"
+)
+PINNED = "ghcr.io/immich-app/postgres:14@sha256:abc\t/home/animesh/immich\n"
+# Built on the Pi; it can still have a digest, which no registry knows.
+CADDY_BUILT = "caddy-caddy\t/home/animesh/caddy\n"
 LOCAL = {
     "ghcr.io/immich-app/immich-server:release": ["ghcr.io/immich-app/immich-server@sha256:old"],
     "ghcr.io/animesh-net/oreo-cloud:latest": ["ghcr.io/animesh-net/oreo-cloud@sha256:same"],
     "caddy:2-builder": ["caddy@sha256:builder"],
     "caddy:2": ["caddy@sha256:base"],
     "caddy-custom": [],
+    "caddy-caddy": ["caddy-caddy@sha256:local"],
 }
 
 
 class FakeHost:
-    def __init__(self, apt=APT, apt_code=0, ps=RUNNING + PINNED + "caddy-custom\n"):
+    def __init__(self, apt=APT, apt_code=0, ps=RUNNING + PINNED + CADDY_BUILT + "caddy-custom\n"):
         self.apt, self.apt_code, self.ps = apt, apt_code, ps
 
     def __call__(self, command):
