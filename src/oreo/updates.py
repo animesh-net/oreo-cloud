@@ -22,6 +22,9 @@ CADDY_DOCKERFILE = HOST / CADDY.lstrip("/") / "Dockerfile"
 # Registry logins, for private images such as this one.
 DOCKER_CONFIGS = (HOST / "home/animesh/.docker/config.json", HOST / "root/.docker/config.json")
 DOCKER_PACKAGES = ("docker", "containerd", "runc")
+# The os-update and image-update aliases are set up as in the README; the long forms work
+# without them.
+OS_COMMAND = "os-update, or: cd ~/oreo-cloud && docker compose run --rm agent update os"
 ACCEPT = ", ".join(
     (
         "application/vnd.oci.image.index.v1+json",
@@ -176,6 +179,18 @@ def newer_images(
     return sorted(set(newer)), unchecked
 
 
+def _images_command(newer: list[str]) -> str:
+    """Immich and Caddy update through `update all`; this image needs a pull first."""
+    steps = ["cd ~/oreo-cloud"]
+    if "oreo-cloud" in newer:
+        steps.append("docker compose pull && docker compose up -d")
+    steps.append("docker compose run --rm agent update all")
+    command = "image-update, or: " + " && ".join(steps)
+    if any(name.startswith("immich") for name in newer):
+        command += " (read Immich's release notes first)"
+    return command
+
+
 def _plural(count: int, word: str) -> str:
     return f"{count} {word}{'' if count == 1 else 's'}"
 
@@ -192,7 +207,8 @@ def summary(run: net.Runner = net.host_run, remote: RemoteDigest = remote_digest
             docker = [name for name in names if name.startswith(DOCKER_PACKAGES)]
             if docker:
                 parts.append("Docker: " + ", ".join(docker))
-            lines.append(f"⬆️ OS: {', '.join(parts)} (update os)")
+            lines.append(f"⬆️ OS: {', '.join(parts)}")
+            lines.append(f"👉 Update the OS: {OS_COMMAND}")
         else:
             lines.append("✅ OS: up to date")
     except Exception as error:  # the report must go out whatever this check does
@@ -200,9 +216,8 @@ def summary(run: net.Runner = net.host_run, remote: RemoteDigest = remote_digest
     try:
         newer, unchecked = newer_images(run, remote)
         if newer:
-            lines.append(
-                f"⬆️ Images: newer {', '.join(newer)} (update everything: README, Everyday use)"
-            )
+            lines.append(f"⬆️ Images: newer {', '.join(newer)}")
+            lines.append(f"👉 Update the images: {_images_command(newer)}")
         else:
             lines.append("✅ Images: up to date")
         if unchecked:

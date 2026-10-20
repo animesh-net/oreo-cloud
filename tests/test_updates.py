@@ -118,9 +118,21 @@ def test_an_image_that_cannot_be_checked_is_named(host):
 def test_summary_lines(host):
     lines = updates.summary(FakeHost(), lambda ref: REMOTE[ref])
     assert lines == [
-        "⬆️ OS: 3 updates available, 1 security, Docker: docker-ce (update os)",
-        "⬆️ Images: newer immich-server (update everything: README, Everyday use)",
+        "⬆️ OS: 3 updates available, 1 security, Docker: docker-ce",
+        "👉 Update the OS: os-update, or: "
+        "cd ~/oreo-cloud && docker compose run --rm agent update os",
+        "⬆️ Images: newer immich-server",
+        "👉 Update the images: image-update, or: "
+        "cd ~/oreo-cloud && docker compose run --rm agent update all"
+        " (read Immich's release notes first)",
     ]
+
+
+def test_a_newer_oreo_image_is_pulled_before_update_all():
+    assert updates._images_command(["oreo-cloud", "caddy"]) == (
+        "image-update, or: cd ~/oreo-cloud && docker compose pull && docker compose up -d"
+        " && docker compose run --rm agent update all"
+    )
 
 
 def test_summary_when_everything_is_current(host):
