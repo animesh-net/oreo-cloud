@@ -44,8 +44,16 @@ class UpdateError(Exception):
 def host(command: Sequence[str], cwd: str | None = None) -> subprocess.CompletedProcess:
     """Run on the host with no time limit: pulling a new Immich release can take many
     minutes. `cwd` starts it inside that host folder, where compose finds its files."""
-    prefix = [*net.HOST_PREFIX[:-1], *([f"--wd={cwd}"] if cwd else []), "--"]
-    return subprocess.run([*prefix, *command], capture_output=True, text=True, check=False)
+    if cwd:
+        # Change folder after entering the host: nsenter's --wd opens the folder inside this
+        # container, where the host's folders do not exist.
+        command = ["sh", "-c", 'cd "$1" && shift && exec "$@"', "sh", cwd, *command]
+    return subprocess.run([*net.HOST_PREFIX, *command], capture_output=True, text=True, check=False)
+
+
+def _error(result: subprocess.CompletedProcess) -> str:
+    lines = (result.stderr or result.stdout).strip().splitlines()
+    return lines[-1] if lines else f"exit code {result.returncode}"
 
 
 def _compose(run: Runner, project: str, *args: str) -> subprocess.CompletedProcess:
@@ -99,8 +107,9 @@ def immich(
     now: datetime | None = None,
 ) -> bool:
     out("== IMMICH ==")
-    if _compose(run, IMMICH, "pull", "-q").returncode != 0:
-        out("Pull failed. Nothing changed.")
+    pulled = _compose(run, IMMICH, "pull", "-q")
+    if pulled.returncode != 0:
+        out(f"Pull failed ({_error(pulled)}). Nothing changed.")
         return False
     if not _immich_has_new_image(run):
         out("Immich is already up to date. Nothing to do.")
@@ -152,7 +161,7 @@ def caddy(run: Runner = host, out: Output = print) -> bool:
     built = _compose(run, CADDY, "build", "--pull")
     out("\n".join(built.stdout.splitlines()[-3:]))
     if built.returncode != 0:
-        out("Build failed. Nothing changed.")
+        out(f"Build failed ({_error(built)}). Nothing changed.")
         return False
     return _compose(run, CADDY, "up", "-d").returncode == 0
 
