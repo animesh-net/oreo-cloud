@@ -144,7 +144,7 @@ def test_pre_update_dump_does_not_count_as_a_fresh_immich_dump(pi, sent):
 
 
 def test_available_updates_are_listed_but_keep_the_report_ok(pi, sent, monkeypatch):
-    lines = ["⬆️ OS: 3 updates available, 1 security (update os)", "⬆️ Images: newer immich-server"]
+    lines = ["⬆️ OS: 3 updates available, 1 security", "⬆️ Images: newer immich-server"]
     monkeypatch.setattr(updates, "report", lambda: lines)
     go(sent)
     [(message, kwargs)] = sent

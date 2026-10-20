@@ -123,7 +123,7 @@ Run any command with `docker compose run --rm agent <command>`:
 | `update os` | Upgrade Ubuntu's packages (`apt-get update`, `upgrade`, `autoremove`), keeping changed config files. Runs as the host service `oreo-os-update`, so an upgrade that restarts Docker does not cut it off; its log is `journalctl -u oreo-os-update`. Never reboots. |
 | `notify "message"` | Send a test notification. |
 
-Nothing is updated automatically. The nightly report says what is available, and each update is started by hand. To update everything except the OS in one line:
+Nothing is updated automatically. The nightly report and `update status` say what is available, each with the command that installs it, and each update is started by hand. To update everything except the OS in one line:
 
 ```bash
 cd ~/oreo-cloud && docker compose pull && docker compose up -d && docker compose run --rm agent update all && docker compose run --rm agent update status
