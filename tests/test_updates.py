@@ -195,3 +195,15 @@ def test_docker_hub_images_use_its_registry_host():
 
     updates.remote_digest("caddy:2", opener)
     assert seen == ["https://registry-1.docker.io/v2/library/caddy/manifests/2"]
+
+
+def test_reboot_check_survives_an_unreadable_host(monkeypatch):
+    class Unreadable:
+        def __truediv__(self, other):
+            return self
+
+        def exists(self):
+            raise PermissionError("/proc/1/root")
+
+    monkeypatch.setattr(updates, "HOST", Unreadable())
+    assert updates.reboot_needed() is False

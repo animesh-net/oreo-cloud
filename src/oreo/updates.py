@@ -206,7 +206,10 @@ def summary(run: net.Runner = net.host_run, remote: RemoteDigest = remote_digest
 
 
 def reboot_needed() -> bool:
-    return (HOST / "var/run/reboot-required").exists()
+    try:
+        return (HOST / "var/run/reboot-required").exists()
+    except OSError:  # the host is out of reach, as outside the agent container
+        return False
 
 
 def report() -> list[str]:
