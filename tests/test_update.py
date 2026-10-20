@@ -115,7 +115,7 @@ def test_failed_pull_changes_nothing(dumps):
     docker = FakeDocker(pull_ok=False)
     ok, lines = go(docker)
     assert not ok
-    assert lines[-1] == "Pull failed. Nothing changed."
+    assert lines[-1] == "Pull failed (exit code 1). Nothing changed."
 
 
 def test_update_waits_for_a_running_backup(dumps, monkeypatch):
@@ -188,8 +188,28 @@ def test_host_commands_have_no_time_limit_and_start_in_the_folder(monkeypatch):
     monkeypatch.setattr(update.subprocess, "run", fake_run)
     update.host(["docker", "compose", "pull"], cwd="/home/animesh/immich")
     assert "timeout" not in seen["kwargs"]
-    assert "--wd=/home/animesh/immich" in seen["argv"]
-    assert seen["argv"][seen["argv"].index("--") + 1 :] == ["docker", "compose", "pull"]
+    assert not any(arg.startswith("--wd") for arg in seen["argv"])
+    after = seen["argv"][seen["argv"].index("--") + 1 :]
+    assert after[:2] == ["sh", "-c"]
+    assert after[4:] == ["/home/animesh/immich", "docker", "compose", "pull"]
+
+
+def test_host_command_changes_folder_after_entering_the_host(tmp_path):
+    script = update.host(["pwd"], cwd=str(tmp_path)).args
+    after = script[script.index("--") + 1 :]
+    result = subprocess.run(after, capture_output=True, text=True, check=True)
+    assert result.stdout.strip() == str(tmp_path)
+
+
+def test_a_failed_pull_says_why(dumps):
+    class Failing(FakeDocker):
+        def __call__(self, command, cwd=None):
+            if " ".join(command).endswith("pull -q"):
+                return subprocess.CompletedProcess(command, 1, "", "error: denied\n")
+            return super().__call__(command, cwd)
+
+    ok, lines = go(Failing())
+    assert lines[-1] == "Pull failed (error: denied). Nothing changed."
 
 
 def test_host_command_failure_is_reported_not_raised(dumps, monkeypatch):

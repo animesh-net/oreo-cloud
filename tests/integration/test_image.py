@@ -323,6 +323,18 @@ def test_agent_can_run_commands_on_the_host():
     assert result.stdout.startswith("0 "), result.stdout + result.stderr
 
 
+def test_agent_runs_host_commands_in_a_host_only_folder(tmp_path):
+    # A folder that exists only on the host, as /home/animesh/immich does on the Pi.
+    result = docker(
+        "run", "--rm", "--privileged", "--pid", "host", "--user", "root",
+        "--entrypoint", "python", IMAGE, "-c",
+        f"from oreo import update; r = update.host(['pwd'], cwd='{tmp_path}'); "
+        "print(r.returncode, r.stdout.strip(), r.stderr.strip())",
+        check=False,
+    )  # fmt: skip
+    assert result.stdout.strip() == f"0 {tmp_path}", result.stdout + result.stderr
+
+
 def test_image_ships_its_settings_and_the_pis_files():
     # The Pi gets compose.yaml and .env.example from the image, not from git.
     for name, path in (("compose", "compose.yaml"), ("env-example", ".env.example")):
