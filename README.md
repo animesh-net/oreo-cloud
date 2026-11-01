@@ -8,6 +8,9 @@ Everything that runs on **oreo-cloud**, my Raspberry Pi 5 home server: checks, a
 - Alerts go to my phone through **ntfy**.
 - **No secrets live here.** They stay in `.env` on the Pi.
 - The outside check that the Pi is alive lives in the separate `oreo-monitor` repository.
+- [`mac/`](mac/) holds a temporary Mac stand-in of the photo app and its front door, for while
+  the Pi is out for repair or replacement. Everything in it is named `oreo-cloud-*`, the same
+  scheme this repo will use once the photo app and its front door are folded in here too.
 
 ## How it works
 

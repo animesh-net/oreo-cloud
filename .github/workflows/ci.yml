@@ -40,6 +40,23 @@ jobs:
           fi
           printf '%s\n' "$PR_TITLE" | python scripts/check_commit_msg.py - || status=1
           exit $status
+      - name: Validate mac/ compose file
+        # Catches a YAML mistake or a dangling service/volume reference in the Mac
+        # stand-in before it reaches the Mac. A dummy .env is required here — it's not
+        # enough to leave the variables unset, because an empty UPLOAD_LOCATION or
+        # DB_DATA_LOCATION collapses to an invalid, empty volume source path. None of
+        # these values are real; the file is removed again straight after.
+        run: |
+          cat > mac/.env <<'ENV'
+          UPLOAD_LOCATION=/tmp/ci-photos
+          DB_DATA_LOCATION=/tmp/ci-db
+          DB_USERNAME=ci
+          DB_PASSWORD=ci
+          DB_DATABASE_NAME=ci
+          TZ=UTC
+          ENV
+          docker compose -f mac/docker-compose.yml config >/dev/null
+          rm mac/.env
       - name: Install restic
         # tests/test_backup_restic.py runs the backup against a real repository.
         run: sudo apt-get update -q && sudo apt-get install -y -q restic

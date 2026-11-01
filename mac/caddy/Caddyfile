@@ -1,0 +1,10 @@
+# The Pi's Caddyfile, adapted for the Mac: Docker publishes port 443 on the Tailscale address
+# instead of `bind`, the photo app is reached by its renamed service, and the Pi-only
+# pi.animesh.org.in site is left out.
+cloud.animesh.org.in {
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	}
+	header Strict-Transport-Security "max-age=15552000"
+	reverse_proxy photos:2283
+}
