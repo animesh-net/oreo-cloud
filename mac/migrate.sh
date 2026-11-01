@@ -18,7 +18,8 @@ SITE=https://cloud.animesh.org.in
 DRY_RUN=false
 [ "${1:-}" = "--dry-run" ] && DRY_RUN=true
 
-old_compose() { (cd "$OLD_DIR" && docker compose --profile proxy "$@"); }
+# The old project put Caddy under the "caddy" profile; the renamed one uses "proxy".
+old_compose() { (cd "$OLD_DIR" && docker compose --profile caddy "$@"); }
 new_compose() { docker compose --profile proxy "$@"; }
 
 count_assets() {
@@ -27,8 +28,8 @@ count_assets() {
     -c 'SELECT count(*) FROM asset;' 2>/dev/null | tr -d '[:space:]'
 }
 
-site_ok() {
-  [ "$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$SITE/api/server/ping")" = 200 ]
+site_code() {
+  curl -s -o /dev/null -m 10 -w '%{http_code}' "$SITE/api/server/ping"
 }
 
 rollback() {
@@ -76,8 +77,13 @@ echo "== 3. Verify =="
 NEW_COUNT=$(docker exec oreo-cloud-db psql -t -A -U "$(grep '^DB_USERNAME=' .env | cut -d= -f2)" \
   -d "$(grep '^DB_DATABASE_NAME=' .env | cut -d= -f2)" -c 'SELECT count(*) FROM asset;' 2>/dev/null | tr -d '[:space:]')
 echo "oreo-cloud has ${NEW_COUNT:-0} assets (immich had $OLD_COUNT)."
-if [ "$NEW_COUNT" != "$OLD_COUNT" ] || ! site_ok; then
-  echo "Counts don't match, or the site isn't answering."
+if [ "$NEW_COUNT" != "$OLD_COUNT" ]; then
+  echo "Asset counts don't match."
+  rollback
+fi
+CODE=$(site_code)
+if [ "$CODE" != 200 ]; then
+  echo "$SITE/api/server/ping answered HTTP $CODE, not 200."
   rollback
 fi
 
