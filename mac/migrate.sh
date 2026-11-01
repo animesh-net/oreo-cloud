@@ -24,7 +24,7 @@ new_compose() { docker compose --profile proxy "$@"; }
 count_assets() {
   docker exec immich_postgres psql -t -A -U "$(grep '^DB_USERNAME=' "$OLD_DIR/.env" | cut -d= -f2)" \
     -d "$(grep '^DB_DATABASE_NAME=' "$OLD_DIR/.env" | cut -d= -f2)" \
-    -c 'SELECT count(*) FROM assets;' 2>/dev/null | tr -d '[:space:]'
+    -c 'SELECT count(*) FROM asset;' 2>/dev/null | tr -d '[:space:]'
 }
 
 site_ok() {
@@ -68,7 +68,7 @@ done
 
 echo "== 3. Verify =="
 NEW_COUNT=$(docker exec oreo-cloud-db psql -t -A -U "$(grep '^DB_USERNAME=' .env | cut -d= -f2)" \
-  -d "$(grep '^DB_DATABASE_NAME=' .env | cut -d= -f2)" -c 'SELECT count(*) FROM assets;' 2>/dev/null | tr -d '[:space:]')
+  -d "$(grep '^DB_DATABASE_NAME=' .env | cut -d= -f2)" -c 'SELECT count(*) FROM asset;' 2>/dev/null | tr -d '[:space:]')
 echo "oreo-cloud has ${NEW_COUNT:-0} assets (immich had $OLD_COUNT)."
 if [ "$NEW_COUNT" != "$OLD_COUNT" ] || ! site_ok; then
   echo "Counts don't match, or the site isn't answering."
