@@ -63,6 +63,8 @@
 
 ## Pull requests
 
+- Once a branch has no more pending commits, push it and open its pull request
+  against `main` straight away; don't wait to be asked.
 - Always open pull requests against `main`. Never base one on another feature branch:
   a squash merge deletes that branch and strands or misroutes the pull requests on
   top of it. If work depends on an unmerged pull request, wait for it to merge, or
