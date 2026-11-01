@@ -18,7 +18,8 @@ SITE=https://cloud.animesh.org.in
 DRY_RUN=false
 [ "${1:-}" = "--dry-run" ] && DRY_RUN=true
 
-old_compose() { (cd "$OLD_DIR" && docker compose --profile proxy "$@"); }
+# The old project put Caddy under the "caddy" profile; the renamed one uses "proxy".
+old_compose() { (cd "$OLD_DIR" && docker compose --profile caddy "$@"); }
 new_compose() { docker compose --profile proxy "$@"; }
 
 count_assets() {
@@ -27,8 +28,8 @@ count_assets() {
     -c 'SELECT count(*) FROM asset;' 2>/dev/null | tr -d '[:space:]'
 }
 
-site_ok() {
-  [ "$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$SITE/api/server/ping")" = 200 ]
+site_code() {
+  curl -s -o /dev/null -m 10 -w '%{http_code}' "$SITE/api/server/ping"
 }
 
 rollback() {
@@ -53,10 +54,16 @@ echo "immich has $OLD_COUNT assets."
 
 echo "== 2. Stop immich & start oreo-cloud =="
 if [ "$DRY_RUN" = true ]; then
-  echo "(dry run) would stop immich (both publish 127.0.0.1:2283 and 100.70.213.121:443, so they can't run together), then run: docker compose --profile proxy up -d"
+  echo "(dry run) would add DB_HOSTNAME, REDIS_HOSTNAME and IMMICH_MACHINE_LEARNING_URL to .env if missing (the renamed services don't match Immich's built-in defaults), stop immich (both publish 127.0.0.1:2283 and 100.70.213.121:443, so they can't run together), then run: docker compose --profile proxy up -d"
   echo "Dry run complete. Nothing was changed."
   exit 0
 fi
+# The renamed services (db, cache, photos-ml) don't match Immich's built-in default
+# hostnames, so these three overrides are required — see the rename plan. Added once,
+# idempotently, whether this .env came from restore.sh or was carried over as-is.
+grep -q '^DB_HOSTNAME=' .env || printf '\nDB_HOSTNAME=db\n' >>.env
+grep -q '^REDIS_HOSTNAME=' .env || printf '\nREDIS_HOSTNAME=cache\n' >>.env
+grep -q '^IMMICH_MACHINE_LEARNING_URL=' .env || printf '\nIMMICH_MACHINE_LEARNING_URL=http://photos-ml:3003\n' >>.env
 # immich is stopped, not removed — its containers, postgres/ and the Passport data all stay
 # in place, so a rollback is just starting it again.
 old_compose stop || { echo "Could not stop immich. Nothing else changed."; exit 1; }
@@ -70,8 +77,13 @@ echo "== 3. Verify =="
 NEW_COUNT=$(docker exec oreo-cloud-db psql -t -A -U "$(grep '^DB_USERNAME=' .env | cut -d= -f2)" \
   -d "$(grep '^DB_DATABASE_NAME=' .env | cut -d= -f2)" -c 'SELECT count(*) FROM asset;' 2>/dev/null | tr -d '[:space:]')
 echo "oreo-cloud has ${NEW_COUNT:-0} assets (immich had $OLD_COUNT)."
-if [ "$NEW_COUNT" != "$OLD_COUNT" ] || ! site_ok; then
-  echo "Counts don't match, or the site isn't answering."
+if [ "$NEW_COUNT" != "$OLD_COUNT" ]; then
+  echo "Asset counts don't match."
+  rollback
+fi
+CODE=$(site_code)
+if [ "$CODE" != 200 ]; then
+  echo "$SITE/api/server/ping answered HTTP $CODE, not 200."
   rollback
 fi
 
