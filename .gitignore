@@ -6,3 +6,6 @@ __pycache__/
 build/
 dist/
 .env
+.DS_Store
+mac/.DS_Store
+src/.DS_Store
