@@ -53,10 +53,16 @@ echo "immich has $OLD_COUNT assets."
 
 echo "== 2. Stop immich & start oreo-cloud =="
 if [ "$DRY_RUN" = true ]; then
-  echo "(dry run) would stop immich (both publish 127.0.0.1:2283 and 100.70.213.121:443, so they can't run together), then run: docker compose --profile proxy up -d"
+  echo "(dry run) would add DB_HOSTNAME, REDIS_HOSTNAME and IMMICH_MACHINE_LEARNING_URL to .env if missing (the renamed services don't match Immich's built-in defaults), stop immich (both publish 127.0.0.1:2283 and 100.70.213.121:443, so they can't run together), then run: docker compose --profile proxy up -d"
   echo "Dry run complete. Nothing was changed."
   exit 0
 fi
+# The renamed services (db, cache, photos-ml) don't match Immich's built-in default
+# hostnames, so these three overrides are required — see the rename plan. Added once,
+# idempotently, whether this .env came from restore.sh or was carried over as-is.
+grep -q '^DB_HOSTNAME=' .env || printf '\nDB_HOSTNAME=db\n' >>.env
+grep -q '^REDIS_HOSTNAME=' .env || printf '\nREDIS_HOSTNAME=cache\n' >>.env
+grep -q '^IMMICH_MACHINE_LEARNING_URL=' .env || printf '\nIMMICH_MACHINE_LEARNING_URL=http://photos-ml:3003\n' >>.env
 # immich is stopped, not removed — its containers, postgres/ and the Passport data all stay
 # in place, so a rollback is just starting it again.
 old_compose stop || { echo "Could not stop immich. Nothing else changed."; exit 1; }
