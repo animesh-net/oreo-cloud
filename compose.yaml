@@ -23,9 +23,9 @@ x-env-file: &env-file
     required: false
 
 services:
-  oreo:
+  heartbeat:
     image: ghcr.io/animesh-net/oreo-cloud:${OREO_IMAGE_TAG:-latest}
-    container_name: oreo
+    container_name: oreo-metrics
     # Host network: the heartbeat binds the Tailscale address itself and waits for it at boot,
     # because Docker does not retry a container whose port binding failed to start.
     network_mode: host

@@ -268,7 +268,7 @@ def test_compose_binds_heartbeat_to_bind_ip():
         ["docker", "compose", "-f", ROOT / "compose.yaml", "config", "--format", "json"],
         capture_output=True, text=True, env=env, check=True,
     )  # fmt: skip
-    service = json.loads(result.stdout)["services"]["oreo"]
+    service = json.loads(result.stdout)["services"]["heartbeat"]
     assert service["network_mode"] == "host"
     assert "ports" not in service
     assert service["environment"]["OREO_HEARTBEAT_HOST"] == "100.64.0.5"

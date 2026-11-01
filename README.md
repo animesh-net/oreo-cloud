@@ -19,7 +19,7 @@ Everything that runs on **oreo-cloud**, my Raspberry Pi 5 home server: checks, a
 | Container | What it does | Access |
 | --- | --- | --- |
 | `oreo-agent` | Runs every scheduled job (see below) and sends the alerts. | Root on the Pi, so it can repair Wi-Fi, read drive health and back up. No open port. |
-| `oreo` | Answers the heartbeat that `oreo-monitor` checks over Tailscale. | Locked down: not root, read-only, listens only on the Tailscale address. |
+| `oreo-metrics` | Answers the heartbeat that `oreo-monitor` checks over Tailscale. | Locked down: not root, read-only, listens only on the Tailscale address. |
 
 ### What runs when
 
