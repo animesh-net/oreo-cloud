@@ -1,0 +1,8 @@
+# Secrets and local data — never committed.
+.env
+caddy/caddy.env
+postgres/
+db-dumps/
+pi-backup/
+restore.log
+*.sql.gz
