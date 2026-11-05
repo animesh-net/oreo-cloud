@@ -65,7 +65,9 @@ rollback() {
 }
 
 say "0. Checks"
-[ -f compose.yaml ] && [ -f .env ] || die "Run this from ~/oreo-cloud, where compose.yaml and .env are."
+if [ ! -f compose.yaml ] || [ ! -f .env ]; then
+  die "Run this from ~/oreo-cloud, where compose.yaml and .env are."
+fi
 for f in "$OLD_IMMICH/.env" "$OLD_IMMICH/docker-compose.yml" "$OLD_CADDY/.env" "$OLD_CADDY/Caddyfile"; do
   [ -f "$f" ] || die "$f not found. Nothing changed."
 done
@@ -78,8 +80,9 @@ DB_USERNAME=${DB_USERNAME:-postgres}
 DB_DATABASE_NAME=${DB_DATABASE_NAME:-immich}
 UPLOAD_LOCATION=$(value "$OLD_IMMICH/.env" UPLOAD_LOCATION)
 DB_DATA_LOCATION=$(value "$OLD_IMMICH/.env" DB_DATA_LOCATION)
-[ -n "$UPLOAD_LOCATION" ] && [ -n "$DB_DATA_LOCATION" ] && [ -n "$(value "$OLD_IMMICH/.env" DB_PASSWORD)" ] \
-  || die "UPLOAD_LOCATION, DB_DATA_LOCATION or DB_PASSWORD missing in $OLD_IMMICH/.env. Nothing changed."
+if [ -z "$UPLOAD_LOCATION" ] || [ -z "$DB_DATA_LOCATION" ] || [ -z "$(value "$OLD_IMMICH/.env" DB_PASSWORD)" ]; then
+  die "UPLOAD_LOCATION, DB_DATA_LOCATION or DB_PASSWORD missing in $OLD_IMMICH/.env. Nothing changed."
+fi
 AUTH_HASH=$(awk '/basic_auth/ {getline; print $2; exit}' "$OLD_CADDY/Caddyfile")
 [ -n "$AUTH_HASH" ] || die "No basic_auth hash found in $OLD_CADDY/Caddyfile. Nothing changed."
 docker run --rm "$OREO_IMAGE" show compose | grep -q 'container_name: oreo-cloud-photos$' \
@@ -142,7 +145,7 @@ CODE=$(curl -s -o /dev/null -m 15 -w '%{http_code}' "$SITE/api/server/ping")
 
 # A plain `docker compose pull` would now pull a new Immich without its database dump.
 for f in "$HOME/.bashrc" "$HOME/.bash_aliases"; do
-  [ -f "$f" ] && sed -i "/^alias image-update=/s/docker compose pull &&/docker compose pull heartbeat agent \&\&/" "$f"
+  [ ! -f "$f" ] || sed -i "/^alias image-update=/s/docker compose pull &&/docker compose pull heartbeat agent \&\&/" "$f"
 done
 
 echo
