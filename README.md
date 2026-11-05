@@ -28,7 +28,7 @@ The photo app (Immich) and its front door (Caddy) run beside them:
 | `oreo-cloud-photos` (`photos`) | Immich server, on `127.0.0.1:2283` only | `immich-server`, tag `IMMICH_VERSION` |
 | `oreo-cloud-photos-ml` (`photos-ml`) | Immich machine learning | `immich-machine-learning`, same tag |
 | `oreo-cloud-db` (`db`) | Immich's Postgres, data in `DB_DATA_LOCATION` | pinned by digest |
-| `oreo-cloud-cache` (`cache`) | Valkey | `ghcr.io/animesh-net/oreo-cloud-cache`, Immich's pinned Valkey republished from [`cache/`](cache/) |
+| `oreo-cloud-cache` (`cache`) | Valkey | `ghcr.io/animesh-net/oreo-cloud-cache`, Immich's pinned Valkey with Debian security updates, built from [`cache/`](cache/) |
 | `oreo-cloud-proxy` (`proxy`) | Caddy: `cloud.animesh.org.in` and `pi.animesh.org.in`, HTTPS on the Tailscale address only | `ghcr.io/animesh-net/oreo-cloud-proxy`, built here from [`proxy/`](proxy/) |
 
 Every image comes from GHCR, so the Pi never builds anything and pulls from one registry. The proxy's secrets (Cloudflare token, `pi.animesh.org.in` password hash) live in `proxy.env` next to `.env`, so no other container sees them.
