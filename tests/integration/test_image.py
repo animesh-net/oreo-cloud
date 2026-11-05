@@ -323,12 +323,15 @@ def test_compose_image_tag_can_be_pinned_for_rollback():
         capture_output=True, text=True, env=env, check=True,
     )  # fmt: skip
     services = json.loads(result.stdout)["services"]
-    ours = {name: services[name]["image"] for name in ("heartbeat", "agent", "proxy")}
+    ours = {name: services[name]["image"] for name in ("heartbeat", "agent", "proxy", "cache")}
     assert ours == {
         "heartbeat": "ghcr.io/animesh-net/oreo-cloud:sha-abc1234",
         "agent": "ghcr.io/animesh-net/oreo-cloud:sha-abc1234",
         "proxy": "ghcr.io/animesh-net/oreo-cloud-proxy:sha-abc1234",
+        "cache": "ghcr.io/animesh-net/oreo-cloud-cache:sha-abc1234",
     }
+    # Every image comes from GHCR.
+    assert all(s["image"].startswith("ghcr.io/") for s in services.values())
     # The photo app keeps its own version; only `update immich` moves it.
     assert services["photos"]["image"] == "ghcr.io/immich-app/immich-server:v3"
 

@@ -16,7 +16,7 @@ from pathlib import Path
 from oreo import backup, drives, net, notify, updates
 
 PROJECT = "/home/animesh/oreo-cloud"
-# Only these pull a new Immich; cache and db are pinned by digest in compose.yaml.
+# Only these pull a new Immich; db is pinned by digest, cache comes from this repo.
 PHOTOS = ("photos", "photos-ml")
 PHOTOS_CONTAINERS = ("oreo-cloud-photos", "oreo-cloud-photos-ml")
 DB_CONTAINER = "oreo-cloud-db"
@@ -159,13 +159,17 @@ def immich(
     return True
 
 
+# Built by this repo's workflow besides the oreo-cloud image itself.
+REPO_IMAGES = ("proxy", "cache")
+
+
 def caddy(run: Runner = host, out: Output = print) -> bool:
-    out("== CADDY (pull the proxy image built by GitHub) ==")
-    pulled = _compose(run, "pull", "-q", "proxy")
+    out("== CADDY AND CACHE (pull the proxy and cache images built by GitHub) ==")
+    pulled = _compose(run, "pull", "-q", *REPO_IMAGES)
     if pulled.returncode != 0:
         out(f"Pull failed ({_error(pulled)}). Nothing changed.")
         return False
-    return _compose(run, "up", "-d", "proxy").returncode == 0
+    return _compose(run, "up", "-d", *REPO_IMAGES).returncode == 0
 
 
 def prune(run: Runner = host, out: Output = print) -> bool:

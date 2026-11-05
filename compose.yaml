@@ -148,7 +148,8 @@ services:
 
   cache:
     container_name: oreo-cloud-cache
-    image: docker.io/valkey/valkey:9@sha256:70739f85ad2ee01a726a965584a0f94895f01b0c60b3cc8b0aeef11eaa6888cf
+    # Valkey, republished on GHCR from cache/ by this repo's workflow.
+    image: ghcr.io/animesh-net/oreo-cloud-cache:${OREO_IMAGE_TAG:-latest}
     healthcheck:
       test: redis-cli ping | grep -q PONG || exit 1
     restart: always

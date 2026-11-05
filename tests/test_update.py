@@ -103,11 +103,11 @@ def test_only_the_three_newest_pre_update_dumps_are_kept(dumps):
     assert len(list(dumps.glob("pre-update-*.sql.gz"))) == 3
 
 
-def test_caddy_pulls_the_proxy_image_and_restarts_only_it(dumps):
+def test_caddy_pulls_the_proxy_and_cache_images_and_restarts_only_them(dumps):
     docker = FakeDocker()
     assert update.caddy(docker, lambda line: None)
-    assert docker.ran("--project-directory /home/animesh/oreo-cloud pull -q proxy")
-    assert docker.ran("--project-directory /home/animesh/oreo-cloud up -d proxy")
+    assert docker.ran("--project-directory /home/animesh/oreo-cloud pull -q proxy cache")
+    assert docker.ran("--project-directory /home/animesh/oreo-cloud up -d proxy cache")
     assert not docker.ran("build")
 
 
