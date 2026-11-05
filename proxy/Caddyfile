@@ -19,3 +19,20 @@ pi.animesh.org.in {
 	}
 	reverse_proxy 127.0.0.1:34001
 }
+
+# Ollama on the MacBook Air, over Tailscale. Answers only while the Mac is awake, so it is not
+# in OREO_SITES; a sleeping Mac must not alert. flush_interval -1 passes streamed replies on
+# as they arrive. Ollama only trusts its own Host name, so it is rewritten.
+ai.animesh.org.in {
+	bind {$OREO_BIND_IP}
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	}
+	basic_auth {
+		animesh {$PI_AUTH_HASH}
+	}
+	reverse_proxy 100.70.213.221:11434 {
+		flush_interval -1
+		header_up Host localhost:11434
+	}
+}
