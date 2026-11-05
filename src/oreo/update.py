@@ -6,6 +6,7 @@ is the photos services and Caddy the proxy service. Every option is safe to run 
 """
 
 import gzip
+import os
 import shutil
 import subprocess
 import time
@@ -16,6 +17,9 @@ from pathlib import Path
 from oreo import backup, drives, net, notify, updates
 
 PROJECT = "/home/animesh/oreo-cloud"
+# The GHCR login is kept by the Pi's user, but host commands run as root, which has none, so
+# pulling this repo's private images would fail with "unauthorized".
+DOCKER_CONFIG = "/home/animesh/.docker"
 # Only these pull a new Immich; db is pinned by digest, cache comes from this repo.
 PHOTOS = ("photos", "photos-ml")
 PHOTOS_CONTAINERS = ("oreo-cloud-photos", "oreo-cloud-photos-ml")
@@ -51,7 +55,13 @@ def host(command: Sequence[str], cwd: str | None = None) -> subprocess.Completed
         # Change folder after entering the host: nsenter's --wd opens the folder inside this
         # container, where the host's folders do not exist.
         command = ["sh", "-c", 'cd "$1" && shift && exec "$@"', "sh", cwd, *command]
-    return subprocess.run([*net.HOST_PREFIX, *command], capture_output=True, text=True, check=False)
+    return subprocess.run(
+        [*net.HOST_PREFIX, *command],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "DOCKER_CONFIG": DOCKER_CONFIG},
+    )
 
 
 def _error(result: subprocess.CompletedProcess) -> str:

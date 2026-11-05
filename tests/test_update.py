@@ -196,6 +196,8 @@ def test_host_commands_have_no_time_limit_and_start_in_the_folder(monkeypatch):
     monkeypatch.setattr(update.subprocess, "run", fake_run)
     update.host(["docker", "compose", "pull"], cwd="/home/animesh/oreo-cloud")
     assert "timeout" not in seen["kwargs"]
+    # Root on the host has no GHCR login; the Pi user's is used for private images.
+    assert seen["kwargs"]["env"]["DOCKER_CONFIG"] == "/home/animesh/.docker"
     assert not any(arg.startswith("--wd") for arg in seen["argv"])
     after = seen["argv"][seen["argv"].index("--") + 1 :]
     assert after[:2] == ["sh", "-c"]
