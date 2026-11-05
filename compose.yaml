@@ -172,7 +172,7 @@ services:
       disable: false
 
   # Caddy with the Cloudflare DNS module, built by this repo's workflow (proxy/), so the Pi
-  # only pulls it. Serves cloud.animesh.org.in and pi.animesh.org.in on the Tailscale address.
+  # only pulls it. Serves cloud., pi. and ai.animesh.org.in on the Tailscale address.
   proxy:
     container_name: oreo-cloud-proxy
     image: ghcr.io/animesh-net/oreo-cloud-proxy:${OREO_IMAGE_TAG:-latest}
