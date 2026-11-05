@@ -28,10 +28,10 @@ The photo app (Immich) and its front door (Caddy) run beside them:
 | `oreo-cloud-photos` (`photos`) | Immich server, on `127.0.0.1:2283` only | `immich-server`, tag `IMMICH_VERSION` |
 | `oreo-cloud-photos-ml` (`photos-ml`) | Immich machine learning | `immich-machine-learning`, same tag |
 | `oreo-cloud-db` (`db`) | Immich's Postgres, data in `DB_DATA_LOCATION` | pinned by digest |
-| `oreo-cloud-cache` (`cache`) | Valkey | pinned by digest |
+| `oreo-cloud-cache` (`cache`) | Valkey | `ghcr.io/animesh-net/oreo-cloud-cache`, Immich's pinned Valkey with Debian security updates, built from [`cache/`](cache/) |
 | `oreo-cloud-proxy` (`proxy`) | Caddy: `cloud.animesh.org.in` and `pi.animesh.org.in`, HTTPS on the Tailscale address only | `ghcr.io/animesh-net/oreo-cloud-proxy`, built here from [`proxy/`](proxy/) |
 
-Every image comes from a registry, so the Pi never builds anything. The proxy's secrets (Cloudflare token, `pi.animesh.org.in` password hash) live in `proxy.env` next to `.env`, so no other container sees them.
+Every image comes from GHCR, so the Pi never builds anything and pulls from one registry. The proxy's secrets (Cloudflare token, `pi.animesh.org.in` password hash) live in `proxy.env` next to `.env`, so no other container sees them.
 
 ### What runs when
 
@@ -132,9 +132,9 @@ Run any command with `docker compose run --rm agent <command>`:
 | `backup` | Run the nightly backup now. |
 | `update status` | Containers, free space, whether the Pi needs a reboot, and which updates are available. |
 | `update immich` | Update the photo app (`photos`, `photos-ml`). Takes a database dump first and stops if the dump looks wrong. |
-| `update caddy` | Pull the latest proxy image and restart `proxy`. |
+| `update caddy` | Pull the latest proxy and cache images and restart `proxy` and `cache`. |
 | `update prune` | Remove unused Docker images. |
-| `update all` | Immich, then the proxy, then prune. |
+| `update all` | Immich, then the proxy and cache, then prune. |
 | `update os` | Upgrade Ubuntu's packages (`apt-get update`, `upgrade`, `autoremove`), keeping changed config files. Runs as the host service `oreo-os-update`, so an upgrade that restarts Docker does not cut it off; its log is `journalctl -u oreo-os-update`. Never reboots. |
 | `notify "message"` | Send a test notification. |
 
@@ -162,7 +162,7 @@ cd ~/oreo-cloud && docker compose pull heartbeat agent && docker compose up -d
 
 `compose.yaml` itself changes rarely. When the image brings a new one, the agent sends a **Setup** alert with the command to refresh it: `cd ~/oreo-cloud && docker run --rm ghcr.io/animesh-net/oreo-cloud show compose > compose.yaml && docker compose up -d`.
 
-The last 10 images are kept. To roll back, add `OREO_IMAGE_TAG=sha-<commit>` to `.env` and run `docker compose up -d`. Remove that line to go back to the latest. The tag applies to the proxy image too, which is built from the same commit.
+The last 10 images are kept. To roll back, add `OREO_IMAGE_TAG=sha-<commit>` to `.env` and run `docker compose up -d`. Remove that line to go back to the latest. The tag applies to the proxy and cache images too, which are built from the same commit.
 
 ### Moving from ~/immich and ~/caddy (one time)
 
@@ -234,7 +234,7 @@ pytest
 - The integration tests need Docker: `docker build -t oreo-cloud:test . && OREO_IMAGE=oreo-cloud:test pytest tests/integration`.
 - To merge a Dependabot pull request, approve it and leave the merge button alone: the `Dependabot merge` workflow waits for the checks and squash-merges it with just its title, without the `Co-authored-by` and `Signed-off-by` lines GitHub's button would add.
 - Dependabot's commits are checked by title only: their bodies hold a changelog, and a squash merge keeps only the title.
-- Dependabot opens weekly pull requests for the pinned Actions, the base image and Python packages.
+- Dependabot opens weekly pull requests for the pinned Actions, the base image, the cache's Valkey pin and Python packages.
 
 ## Changes
 
