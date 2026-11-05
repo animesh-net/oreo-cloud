@@ -31,9 +31,9 @@ The photo app (Immich) and its front door (Caddy) run beside them:
 | `oreo-cloud-cache` (`cache`) | Valkey | `ghcr.io/animesh-net/oreo-cloud-cache`, Immich's pinned Valkey with Debian security updates, built from [`cache/`](cache/) |
 | `oreo-cloud-proxy` (`proxy`) | Caddy: `cloud.animesh.org.in`, `pi.animesh.org.in` and `ai.animesh.org.in`, HTTPS on the Tailscale address only | `ghcr.io/animesh-net/oreo-cloud-proxy`, built here from [`proxy/`](proxy/) |
 
-Every image comes from GHCR, so the Pi never builds anything and pulls from one registry. The proxy's secrets (Cloudflare token, the password hash for `pi.` and `ai.`) live in `proxy.env` next to `.env`, so no other container sees them.
+Every image comes from GHCR, so the Pi never builds anything and pulls from one registry. The proxy's secrets (Cloudflare token, the password hash for `pi.`) live in `proxy.env` next to `.env`, so no other container sees them.
 
-`ai.animesh.org.in` forwards to Ollama on the MacBook Air (`100.70.213.221:11434`) over Tailscale, behind the same password as `pi.animesh.org.in`, with streamed replies passed on as they arrive. The Mac runs Ollama with `OLLAMA_HOST=0.0.0.0` so it answers on its Tailscale address. While the Mac sleeps the site returns an error; it is left out of the website checks so that does not alert.
+`ai.animesh.org.in` forwards to the oreo-ai web app on the MacBook Air (`100.70.213.221:8080`) over Tailscale, with streamed replies passed on as they arrive. The app has its own sign-in, so there is no proxy password. The Mac publishes that port on its Tailscale address (oreo-ai's `OREO_AI_BIND_IP`); Ollama stays local to the Mac. While the Mac sleeps the site returns an error; it is left out of the website checks so that does not alert.
 
 ### What runs when
 
