@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from oreo import cli, settings
@@ -50,6 +52,12 @@ def test_repository_settings_parse(monkeypatch):
     monkeypatch.delenv("OREO_MEMORY_MAX_PERCENT", raising=False)
     settings.load()
     assert float(settings.os.environ["OREO_MEMORY_MAX_PERCENT"]) == 50
+
+
+def test_the_cutover_script_ships_in_the_image():
+    assert settings.FILES["migrate"] == "migrate.sh"
+    dockerfile = (Path(__file__).parent.parent / "Dockerfile").read_text()
+    assert "COPY pi/migrate.sh /usr/share/oreo/migrate.sh" in dockerfile
 
 
 def test_show_prints_the_shipped_file(share, capsys):

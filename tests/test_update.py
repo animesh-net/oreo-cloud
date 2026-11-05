@@ -24,7 +24,7 @@ class FakeDocker:
         self.cwds.append(cwd)
         out, code = "", 0
         text = " ".join(command)
-        if text.endswith("pull -q"):
+        if " pull -q" in text:
             code = 0 if self.pull_ok else 1
         elif "{{.Image}}" in text:
             out = "sha256:old"
@@ -80,10 +80,10 @@ def test_new_immich_is_dumped_then_started(dumps):
     assert (
         "Dump saved: /mnt/data-hot-ssd1/library/backups/pre-update-2026-10-19-0915.sql.gz" in lines
     )
-    assert docker.ran("--project-directory /home/animesh/immich up -d")
-    assert docker.cwds[
-        docker.commands.index(next(c for c in docker.commands if c.endswith("up -d")))
-    ] == ("/home/animesh/immich")
+    assert docker.ran("--project-directory /home/animesh/oreo-cloud up -d photos photos-ml")
+    assert docker.cwds[docker.commands.index(next(c for c in docker.commands if "up -d" in c))] == (
+        "/home/animesh/oreo-cloud"
+    )
     assert "Immich is healthy." in lines
 
 
@@ -101,6 +101,14 @@ def test_only_the_three_newest_pre_update_dumps_are_kept(dumps):
         (dumps / f"pre-update-2026-10-0{day}-0900.sql.gz").write_bytes(b"x")
     go(FakeDocker())
     assert len(list(dumps.glob("pre-update-*.sql.gz"))) == 3
+
+
+def test_caddy_pulls_the_proxy_image_and_restarts_only_it(dumps):
+    docker = FakeDocker()
+    assert update.caddy(docker, lambda line: None)
+    assert docker.ran("--project-directory /home/animesh/oreo-cloud pull -q proxy")
+    assert docker.ran("--project-directory /home/animesh/oreo-cloud up -d proxy")
+    assert not docker.ran("build")
 
 
 def test_unhealthy_server_alerts(dumps, monkeypatch):
@@ -186,12 +194,12 @@ def test_host_commands_have_no_time_limit_and_start_in_the_folder(monkeypatch):
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(update.subprocess, "run", fake_run)
-    update.host(["docker", "compose", "pull"], cwd="/home/animesh/immich")
+    update.host(["docker", "compose", "pull"], cwd="/home/animesh/oreo-cloud")
     assert "timeout" not in seen["kwargs"]
     assert not any(arg.startswith("--wd") for arg in seen["argv"])
     after = seen["argv"][seen["argv"].index("--") + 1 :]
     assert after[:2] == ["sh", "-c"]
-    assert after[4:] == ["/home/animesh/immich", "docker", "compose", "pull"]
+    assert after[4:] == ["/home/animesh/oreo-cloud", "docker", "compose", "pull"]
 
 
 def test_host_command_changes_folder_after_entering_the_host(tmp_path):
@@ -204,7 +212,7 @@ def test_host_command_changes_folder_after_entering_the_host(tmp_path):
 def test_a_failed_pull_says_why(dumps):
     class Failing(FakeDocker):
         def __call__(self, command, cwd=None):
-            if " ".join(command).endswith("pull -q"):
+            if " pull -q" in " ".join(command):
                 return subprocess.CompletedProcess(command, 1, "", "error: denied\n")
             return super().__call__(command, cwd)
 

@@ -1,0 +1,21 @@
+# The Pi's sites, reachable only over Tailscale. {$...} values come from the container's
+# environment: OREO_BIND_IP from .env, the rest from proxy.env (never committed).
+cloud.animesh.org.in {
+	bind {$OREO_BIND_IP}
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	}
+	header Strict-Transport-Security "max-age=15552000"
+	reverse_proxy 127.0.0.1:2283
+}
+
+pi.animesh.org.in {
+	bind {$OREO_BIND_IP}
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	}
+	basic_auth {
+		animesh {$PI_AUTH_HASH}
+	}
+	reverse_proxy 127.0.0.1:34001
+}

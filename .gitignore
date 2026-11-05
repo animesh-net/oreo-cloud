@@ -6,6 +6,7 @@ __pycache__/
 build/
 dist/
 .env
+proxy.env
 .DS_Store
 mac/.DS_Store
 src/.DS_Store

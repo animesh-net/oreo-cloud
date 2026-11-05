@@ -1,3 +1,7 @@
+# The whole Pi: oreo's own containers, the photo app and the proxy, all named oreo-cloud-*
+# after their role, the same scheme as mac/docker-compose.yml.
+name: oreo-cloud
+
 # Only /mnt is shared, not the whole host. The container's own / sits on the NVMe, so "/"
 # already reports its usage. rslave: drives mounted after the container starts show up too.
 x-mnt: &mnt
@@ -25,7 +29,7 @@ x-env-file: &env-file
 services:
   heartbeat:
     image: ghcr.io/animesh-net/oreo-cloud:${OREO_IMAGE_TAG:-latest}
-    container_name: oreo-metrics
+    container_name: oreo-cloud-metrics
     # Host network: the heartbeat binds the Tailscale address itself and waits for it at boot,
     # because Docker does not retry a container whose port binding failed to start.
     network_mode: host
@@ -62,7 +66,7 @@ services:
   agent:
     image: ghcr.io/animesh-net/oreo-cloud:${OREO_IMAGE_TAG:-latest}
     command: ["agent"]
-    container_name: oreo-agent
+    container_name: oreo-cloud-agent
     hostname: oreo-cloud
     restart: unless-stopped
     init: true
@@ -104,5 +108,89 @@ services:
       - /var/spool/cron:/host/var/spool/cron:ro
       - *mnt
 
+  # The photo app (Immich). Updated only with `update immich`, which takes a database dump
+  # first, so the pull commands elsewhere name the other services instead of pulling these.
+  photos:
+    container_name: oreo-cloud-photos
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v3}
+    volumes:
+      - ${UPLOAD_LOCATION:?set UPLOAD_LOCATION in .env}:/data
+      - /etc/localtime:/etc/localtime:ro
+    environment: &photos-env
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_DATABASE_NAME: ${DB_DATABASE_NAME:-immich}
+      # The renamed services don't match Immich's built-in default hostnames.
+      DB_HOSTNAME: db
+      REDIS_HOSTNAME: cache
+      IMMICH_MACHINE_LEARNING_URL: http://photos-ml:3003
+      TZ: ${OREO_TIMEZONE:-Asia/Kolkata}
+    ports:
+      - '127.0.0.1:2283:2283'
+    depends_on:
+      - cache
+      - db
+    restart: always
+    logging: *logging
+    healthcheck:
+      disable: false
+
+  photos-ml:
+    container_name: oreo-cloud-photos-ml
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-v3}
+    volumes:
+      - oreo-cloud-photos-ml-cache:/cache
+    environment: *photos-env
+    restart: always
+    logging: *logging
+    healthcheck:
+      disable: false
+
+  cache:
+    container_name: oreo-cloud-cache
+    image: docker.io/valkey/valkey:9@sha256:70739f85ad2ee01a726a965584a0f94895f01b0c60b3cc8b0aeef11eaa6888cf
+    healthcheck:
+      test: redis-cli ping | grep -q PONG || exit 1
+    restart: always
+    logging: *logging
+
+  db:
+    container_name: oreo-cloud-db
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_DB: ${DB_DATABASE_NAME:-immich}
+      POSTGRES_INITDB_ARGS: '--data-checksums'
+    volumes:
+      - ${DB_DATA_LOCATION:?set DB_DATA_LOCATION in .env}:/var/lib/postgresql/data
+    shm_size: 128mb
+    restart: always
+    logging: *logging
+    healthcheck:
+      disable: false
+
+  # Caddy with the Cloudflare DNS module, built by this repo's workflow (proxy/), so the Pi
+  # only pulls it. Serves cloud.animesh.org.in and pi.animesh.org.in on the Tailscale address.
+  proxy:
+    container_name: oreo-cloud-proxy
+    image: ghcr.io/animesh-net/oreo-cloud-proxy:${OREO_IMAGE_TAG:-latest}
+    network_mode: host
+    restart: unless-stopped
+    logging: *logging
+    # The Cloudflare token and the pi.animesh.org.in password hash, kept apart from .env so
+    # the other containers never see them.
+    env_file: proxy.env
+    environment:
+      OREO_BIND_IP: "${OREO_BIND_IP:?set OREO_BIND_IP in .env}"
+    volumes:
+      - oreo-cloud-proxy-data:/data
+      - oreo-cloud-proxy-config:/config
+    depends_on:
+      - photos
+
 volumes:
   oreo-state:
+  oreo-cloud-photos-ml-cache:
+  oreo-cloud-proxy-data:
+  oreo-cloud-proxy-config:

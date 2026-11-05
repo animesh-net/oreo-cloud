@@ -8,18 +8,30 @@ Everything that runs on **oreo-cloud**, my Raspberry Pi 5 home server: checks, a
 - Alerts go to my phone through **ntfy**.
 - **No secrets live here.** They stay in `.env` on the Pi.
 - The outside check that the Pi is alive lives in the separate `oreo-monitor` repository.
+- Every container is named `oreo-cloud-*` after its role, not after the software in it.
 - [`mac/`](mac/) holds a temporary Mac stand-in of the photo app and its front door, for while
-  the Pi is out for repair or replacement. Everything in it is named `oreo-cloud-*`, the same
-  scheme this repo will use once the photo app and its front door are folded in here too.
+  the Pi is out for repair or replacement, under the same names.
 
 ## How it works
 
-`compose.yaml` runs two containers from the same image:
+`compose.yaml` is the whole Pi, one compose project named `oreo-cloud`. Two containers run this repo's image:
 
 | Container | What it does | Access |
 | --- | --- | --- |
-| `oreo-agent` | Runs every scheduled job (see below) and sends the alerts. | Root on the Pi, so it can repair Wi-Fi, read drive health and back up. No open port. |
-| `oreo-metrics` | Answers the heartbeat that `oreo-monitor` checks over Tailscale. | Locked down: not root, read-only, listens only on the Tailscale address. |
+| `oreo-cloud-agent` | Runs every scheduled job (see below) and sends the alerts. | Root on the Pi, so it can repair Wi-Fi, read drive health and back up. No open port. |
+| `oreo-cloud-metrics` | Answers the heartbeat that `oreo-monitor` checks over Tailscale. | Locked down: not root, read-only, listens only on the Tailscale address. |
+
+The photo app (Immich) and its front door (Caddy) run beside them:
+
+| Container (service) | What it is | Image |
+| --- | --- | --- |
+| `oreo-cloud-photos` (`photos`) | Immich server, on `127.0.0.1:2283` only | `immich-server`, tag `IMMICH_VERSION` |
+| `oreo-cloud-photos-ml` (`photos-ml`) | Immich machine learning | `immich-machine-learning`, same tag |
+| `oreo-cloud-db` (`db`) | Immich's Postgres, data in `DB_DATA_LOCATION` | pinned by digest |
+| `oreo-cloud-cache` (`cache`) | Valkey | pinned by digest |
+| `oreo-cloud-proxy` (`proxy`) | Caddy: `cloud.animesh.org.in` and `pi.animesh.org.in`, HTTPS on the Tailscale address only | `ghcr.io/animesh-net/oreo-cloud-proxy`, built here from [`proxy/`](proxy/) |
+
+Every image comes from a registry, so the Pi never builds anything. The proxy's secrets (Cloudflare token, `pi.animesh.org.in` password hash) live in `proxy.env` next to `.env`, so no other container sees them.
 
 ### What runs when
 
@@ -67,7 +79,7 @@ Every command is one line, so each can be pasted on its own from a phone.
    docker run --rm ghcr.io/animesh-net/oreo-cloud show env-example > .env && chmod 600 .env
    ```
 
-3. Fill in the four required values in `.env`. These lines do it without showing the token on screen; the last one assumes the old alert file `/etc/oreo/alert.env`, otherwise set `OREO_NTFY_URL` with `nano .env`:
+3. Fill in the required values in `.env` (the photo app's are listed in it too, and `proxy.env` is described at its end). These lines do it without showing the token on screen; the last one assumes the old alert file `/etc/oreo/alert.env`, otherwise set `OREO_NTFY_URL` with `nano .env`:
 
    ```bash
    sed -i "s|^DOCKER_GID=.*|DOCKER_GID=$(stat -c %g /var/run/docker.sock)|" .env
@@ -84,7 +96,7 @@ Every command is one line, so each can be pasted on its own from a phone.
    docker compose pull && docker compose up -d
    ```
 
-5. Check it. Both containers should say `healthy` within a minute, and the two commands should match the last nightly report.
+5. Check it. Every container should say `healthy` within a minute, and the two commands should match the last nightly report.
 
    ```bash
    docker ps
@@ -119,17 +131,17 @@ Run any command with `docker compose run --rm agent <command>`:
 | `drives` | Drive health: status, life left, data written, free space. |
 | `backup` | Run the nightly backup now. |
 | `update status` | Containers, free space, whether the Pi needs a reboot, and which updates are available. |
-| `update immich` | Update Immich. Takes a database dump first and stops if the dump looks wrong. |
-| `update caddy` | Rebuild Caddy on the latest base image. |
+| `update immich` | Update the photo app (`photos`, `photos-ml`). Takes a database dump first and stops if the dump looks wrong. |
+| `update caddy` | Pull the latest proxy image and restart `proxy`. |
 | `update prune` | Remove unused Docker images. |
-| `update all` | Immich, then Caddy, then prune. |
+| `update all` | Immich, then the proxy, then prune. |
 | `update os` | Upgrade Ubuntu's packages (`apt-get update`, `upgrade`, `autoremove`), keeping changed config files. Runs as the host service `oreo-os-update`, so an upgrade that restarts Docker does not cut it off; its log is `journalctl -u oreo-os-update`. Never reboots. |
 | `notify "message"` | Send a test notification. |
 
-Nothing is updated automatically. The nightly report and `update status` say what is available, each with the command that installs it, and each update is started by hand. To update everything except the OS in one line:
+Nothing is updated automatically. The nightly report and `update status` say what is available, each with the command that installs it, and each update is started by hand. Never run a plain `docker compose pull` here: it would pull a new Immich and `up -d` would start it without the database dump `update immich` takes first. Pull only this repo's image, `docker compose pull heartbeat agent`. To update everything except the OS in one line:
 
 ```bash
-cd ~/oreo-cloud && docker compose pull && docker compose up -d && docker compose run --rm agent update all && docker compose run --rm agent update status
+cd ~/oreo-cloud && docker compose pull heartbeat agent && docker compose up -d && docker compose run --rm agent update all && docker compose run --rm agent update status
 ```
 
 Run `update os` on its own, away from the 03:30 backup and the router restart at 06:00, then `sudo reboot` if `update status` says a reboot is needed. Ubuntu installs security updates by itself unless that is turned off on the Pi: `/etc/apt/apt.conf.d/20auto-upgrades` with `APT::Periodic::Unattended-Upgrade "0";` stops it, and `APT::Periodic::Update-Package-Lists "1";` keeps the daily package list refresh the report reads.
@@ -137,7 +149,7 @@ Run `update os` on its own, away from the 03:30 backup and the router restart at
 Two short names do the same: `os-update` for the OS and `image-update` for the line above. This sets both up once on the Pi, replacing any older definitions of them:
 
 ```bash
-sed -i '/^alias os-update=/d;/^alias image-update=/d' ~/.bashrc ~/.bash_aliases 2>/dev/null; printf '%s\n' "alias os-update='docker compose -f ~/oreo-cloud/compose.yaml run --rm agent update os'" "alias image-update='(cd ~/oreo-cloud && docker compose pull && docker compose up -d && docker compose run --rm agent update all && docker compose run --rm agent update status)'" >> ~/.bashrc && source ~/.bashrc
+sed -i '/^alias os-update=/d;/^alias image-update=/d' ~/.bashrc ~/.bash_aliases 2>/dev/null; printf '%s\n' "alias os-update='docker compose -f ~/oreo-cloud/compose.yaml run --rm agent update os'" "alias image-update='(cd ~/oreo-cloud && docker compose pull heartbeat agent && docker compose up -d && docker compose run --rm agent update all && docker compose run --rm agent update status)'" >> ~/.bashrc && source ~/.bashrc
 ```
 
 ### Update or roll back this image
@@ -145,19 +157,32 @@ sed -i '/^alias os-update=/d;/^alias image-update=/d' ~/.bashrc ~/.bash_aliases 
 Code and settings both come with the image, so this is the whole update:
 
 ```bash
-cd ~/oreo-cloud && docker compose pull && docker compose up -d
+cd ~/oreo-cloud && docker compose pull heartbeat agent && docker compose up -d
 ```
 
 `compose.yaml` itself changes rarely. When the image brings a new one, the agent sends a **Setup** alert with the command to refresh it: `cd ~/oreo-cloud && docker run --rm ghcr.io/animesh-net/oreo-cloud show compose > compose.yaml && docker compose up -d`.
 
-The last 10 images are kept. To roll back, add `OREO_IMAGE_TAG=sha-<commit>` to `.env` and run `docker compose up -d`. Remove that line to go back to the latest.
+The last 10 images are kept. To roll back, add `OREO_IMAGE_TAG=sha-<commit>` to `.env` and run `docker compose up -d`. Remove that line to go back to the latest. The tag applies to the proxy image too, which is built from the same commit.
+
+### Moving from ~/immich and ~/caddy (one time)
+
+Before this, Immich and Caddy ran as their own compose projects in `~/immich` and `~/caddy`, with containers named `immich_*` and `caddy-caddy-1`. `pi/migrate.sh` moves them into this project. It ships in the image. Run from `~/oreo-cloud`, one line at a time:
+
+```bash
+docker compose pull heartbeat agent
+docker run --rm ghcr.io/animesh-net/oreo-cloud show migrate > migrate.sh
+bash migrate.sh --dry-run
+bash migrate.sh
+```
+
+It reads the settings from `~/immich/.env` and `~/caddy` (nothing is retyped), dumps the database first, removes the old containers (photos, database and the old folders stay), writes the image's `compose.yaml`, copies the proxy's certificates and the ML model cache into the new volumes, starts everything and checks the asset count and `https://cloud.animesh.org.in`. If a check fails it puts the old projects back. It also changes the `image-update` alias to pull only this repo's image. The site is down for about a minute; run it away from the 03:30 backup.
 
 ## If something goes wrong
 
 | Problem | What to do |
 | --- | --- |
 | A check alerts | The alert names the failing check. Run that check by hand to see the detail, for example `docker compose run --rm agent storage`. |
-| `oreo-agent` is unhealthy or missing | `docker compose logs agent`, then `docker compose up -d`. |
+| `oreo-cloud-agent` is unhealthy or missing | `docker compose logs agent`, then `docker compose up -d`. |
 | Docker itself is down | Nothing inside Docker can fix this. Connect over Tailscale with SSH, then run `sudo systemctl restart docker` and `docker compose up -d`. |
 | A backup failed | The alert says which step failed. Fix that, then run `docker compose run --rm agent backup`. |
 | An old stopped container keeps alerting | Remove it, or give it the label `oreo.ignore=true`. |
@@ -183,7 +208,7 @@ Everything else is optional and listed, with its default, at the bottom of `.env
 | `OREO_SITES` | the two sites | Websites the agent checks |
 | `OREO_IMAGE_TAG` | `latest` | Image to run; set a `sha-` tag to roll back |
 
-Drive paths, alert thresholds and the reminder interval live in [`config/settings.env`](config/settings.env), which is built into the image. A change goes through a pull request like any other, and the next `docker compose pull && docker compose up -d` applies it. A value set in the Pi's `.env` overrides the built-in one.
+Drive paths, alert thresholds and the reminder interval live in [`config/settings.env`](config/settings.env), which is built into the image. A change goes through a pull request like any other, and the next `docker compose pull heartbeat agent && docker compose up -d` applies it. A value set in the Pi's `.env` overrides the built-in one.
 
 | Setting | Value | Alerts when |
 | --- | --- | --- |

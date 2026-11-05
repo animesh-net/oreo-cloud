@@ -1,4 +1,5 @@
-"""Files built into the image: the settings, and the compose.yaml and .env.example for the Pi.
+"""Files built into the image: the settings, and the compose.yaml, .env.example and migrate.sh
+for the Pi.
 
 The settings in config/settings.env are defaults: a variable that is already set, from the
 Pi's .env, wins. Set OREO_SETTINGS_FILE to an empty value to skip them, as the integration
@@ -11,7 +12,7 @@ from pathlib import Path
 from oreo.checks import Check
 
 SHARE_DIR = Path("/usr/share/oreo")
-FILES = {"compose": "compose.yaml", "env-example": ".env.example"}
+FILES = {"compose": "compose.yaml", "env-example": ".env.example", "migrate": "migrate.sh"}
 HOST_COMPOSE_FILE = "/host/home/animesh/oreo-cloud/compose.yaml"
 REFRESH = (
     "cd ~/oreo-cloud && docker run --rm ghcr.io/animesh-net/oreo-cloud show compose > "

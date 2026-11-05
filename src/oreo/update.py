@@ -1,8 +1,8 @@
-"""On-demand updates: Immich (database dump first), Caddy, unused images and the OS.
+"""On-demand updates: Immich (database dump first), the proxy, unused images and the OS.
 
 Port of the host's oreo-update. Nothing here runs on a schedule; each update is started by hand.
-Commands run on the host through nsenter, so Immich and Caddy keep their own compose files.
-Every option is safe to run again.
+Commands run on the host through nsenter, in the Pi's oreo-cloud compose project, where Immich
+is the photos services and Caddy the proxy service. Every option is safe to run again.
 """
 
 import gzip
@@ -15,8 +15,11 @@ from pathlib import Path
 
 from oreo import backup, drives, net, notify, updates
 
-IMMICH = "/home/animesh/immich"
-CADDY = "/home/animesh/caddy"
+PROJECT = "/home/animesh/oreo-cloud"
+# Only these pull a new Immich; cache and db are pinned by digest in compose.yaml.
+PHOTOS = ("photos", "photos-ml")
+PHOTOS_CONTAINERS = ("oreo-cloud-photos", "oreo-cloud-photos-ml")
+DB_CONTAINER = "oreo-cloud-db"
 HOST = Path("/proc/1/root")
 # The old script wrote to /srv/immich/library/backups, from before the library moved to the
 # SSD; the dumps belong next to Immich's own, which the nightly backup copies off the SSD.
@@ -56,8 +59,8 @@ def _error(result: subprocess.CompletedProcess) -> str:
     return lines[-1] if lines else f"exit code {result.returncode}"
 
 
-def _compose(run: Runner, project: str, *args: str) -> subprocess.CompletedProcess:
-    return run(["docker", "compose", "--project-directory", project, *args], cwd=project)
+def _compose(run: Runner, *args: str) -> subprocess.CompletedProcess:
+    return run(["docker", "compose", "--project-directory", PROJECT, *args], cwd=PROJECT)
 
 
 def _inspect(run: Runner, *args: str) -> str:
@@ -66,7 +69,7 @@ def _inspect(run: Runner, *args: str) -> str:
 
 
 def _immich_has_new_image(run: Runner) -> bool:
-    for container in ("immich_server", "immich_machine_learning"):
+    for container in PHOTOS_CONTAINERS:
         running = _inspect(run, "inspect", "-f", "{{.Image}}", container)
         image = _inspect(run, "inspect", "-f", "{{.Config.Image}}", container)
         pulled = _inspect(run, "image", "inspect", "-f", "{{.Id}}", image) if image else ""
@@ -77,7 +80,7 @@ def _immich_has_new_image(run: Runner) -> bool:
 
 def _database_user() -> str:
     try:
-        for line in (HOST / IMMICH.lstrip("/") / ".env").read_text().splitlines():
+        for line in (HOST / PROJECT.lstrip("/") / ".env").read_text().splitlines():
             if line.startswith("DB_USERNAME="):
                 return line.split("=", 1)[1].strip() or "postgres"
     except OSError:
@@ -89,7 +92,7 @@ def dump_database(path: Path, user: str) -> None:
     """Stream pg_dumpall from the Postgres container into a gzip file."""
     command = [
         *net.HOST_PREFIX,
-        "docker", "exec", "immich_postgres",
+        "docker", "exec", DB_CONTAINER,
         "pg_dumpall", "--clean", "--if-exists", f"--username={user}",
     ]  # fmt: skip
     with subprocess.Popen(command, stdout=subprocess.PIPE) as process, gzip.open(path, "wb") as out:
@@ -107,7 +110,7 @@ def immich(
     now: datetime | None = None,
 ) -> bool:
     out("== IMMICH ==")
-    pulled = _compose(run, IMMICH, "pull", "-q")
+    pulled = _compose(run, "pull", "-q", *PHOTOS)
     if pulled.returncode != 0:
         out(f"Pull failed ({_error(pulled)}). Nothing changed.")
         return False
@@ -131,10 +134,10 @@ def immich(
     for stale in old[KEEP_PRE_UPDATE_DUMPS:]:
         stale.unlink()
     out(f"Dump saved: /mnt/data-hot-ssd1/library/backups/{path.name}")
-    _compose(run, IMMICH, "up", "-d")
+    _compose(run, "up", "-d", *PHOTOS)
     status = ""
     for _ in range(HEALTHY_WAIT_SECONDS // 5):
-        status = _inspect(run, "inspect", "-f", "{{.State.Health.Status}}", "immich_server")
+        status = _inspect(run, "inspect", "-f", "{{.State.Health.Status}}", PHOTOS_CONTAINERS[0])
         if status == "healthy":
             break
         sleep(5)
@@ -151,19 +154,18 @@ def immich(
             out(f"oreo: {error}")
         return False
     out("Immich is healthy.")
-    out(_compose(run, IMMICH, "images").stdout.rstrip())
-    out(f"To go back, restore the dump above and set an older IMMICH_VERSION in {IMMICH}/.env.")
+    out(_compose(run, "images", *PHOTOS).stdout.rstrip())
+    out(f"To go back, restore the dump above and set an older IMMICH_VERSION in {PROJECT}/.env.")
     return True
 
 
 def caddy(run: Runner = host, out: Output = print) -> bool:
-    out("== CADDY (rebuild with latest base image) ==")
-    built = _compose(run, CADDY, "build", "--pull")
-    out("\n".join(built.stdout.splitlines()[-3:]))
-    if built.returncode != 0:
-        out(f"Build failed ({_error(built)}). Nothing changed.")
+    out("== CADDY (pull the proxy image built by GitHub) ==")
+    pulled = _compose(run, "pull", "-q", "proxy")
+    if pulled.returncode != 0:
+        out(f"Pull failed ({_error(pulled)}). Nothing changed.")
         return False
-    return _compose(run, CADDY, "up", "-d").returncode == 0
+    return _compose(run, "up", "-d", "proxy").returncode == 0
 
 
 def prune(run: Runner = host, out: Output = print) -> bool:

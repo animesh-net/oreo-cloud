@@ -20,24 +20,23 @@ Conf libc6 (2.39-0ubuntu8.4 Ubuntu:24.04/noble-updates [arm64])
 )
 
 RUNNING = (
-    "ghcr.io/immich-app/immich-server:release\t/home/animesh/immich\n"
-    "ghcr.io/animesh-net/oreo-cloud:latest\t/home/animesh/oreo-cloud\n"
+    "ghcr.io/immich-app/immich-server:release\n"
+    "ghcr.io/animesh-net/oreo-cloud:latest\n"
+    "ghcr.io/animesh-net/oreo-cloud-proxy:latest\n"
 )
-PINNED = "ghcr.io/immich-app/postgres:14@sha256:abc\t/home/animesh/immich\n"
-# Built on the Pi; it can still have a digest, which no registry knows.
-CADDY_BUILT = "caddy-caddy\t/home/animesh/caddy\n"
+PINNED = "ghcr.io/immich-app/postgres:14@sha256:abc\n"
 LOCAL = {
     "ghcr.io/immich-app/immich-server:release": ["ghcr.io/immich-app/immich-server@sha256:old"],
     "ghcr.io/animesh-net/oreo-cloud:latest": ["ghcr.io/animesh-net/oreo-cloud@sha256:same"],
-    "caddy:2-builder": ["caddy@sha256:builder"],
-    "caddy:2": ["caddy@sha256:base"],
-    "caddy-custom": [],
-    "caddy-caddy": ["caddy-caddy@sha256:local"],
+    "ghcr.io/animesh-net/oreo-cloud-proxy:latest": [
+        "ghcr.io/animesh-net/oreo-cloud-proxy@sha256:proxy"
+    ],
+    "local-build": [],
 }
 
 
 class FakeHost:
-    def __init__(self, apt=APT, apt_code=0, ps=RUNNING + PINNED + CADDY_BUILT + "caddy-custom\n"):
+    def __init__(self, apt=APT, apt_code=0, ps=RUNNING + PINNED + "local-build\n"):
         self.apt, self.apt_code, self.ps = apt, apt_code, ps
 
     def __call__(self, command):
@@ -54,19 +53,12 @@ class FakeHost:
 REMOTE = {
     "ghcr.io/immich-app/immich-server:release": "sha256:new",
     "ghcr.io/animesh-net/oreo-cloud:latest": "sha256:same",
-    "caddy:2-builder": "sha256:builder",
-    "caddy:2": "sha256:base",
+    "ghcr.io/animesh-net/oreo-cloud-proxy:latest": "sha256:proxy",
 }
 
 
 @pytest.fixture
 def host(tmp_path, monkeypatch):
-    dockerfile = tmp_path / "Dockerfile"
-    dockerfile.write_text(
-        "FROM caddy:2-builder AS builder\nRUN xcaddy build\n"
-        "FROM --platform=linux/arm64 caddy:2\nCOPY --from=builder /usr/bin/caddy /usr/bin/caddy\n"
-    )
-    monkeypatch.setattr(updates, "CADDY_DOCKERFILE", dockerfile)
     monkeypatch.setattr(updates, "HOST", tmp_path)
     return tmp_path
 
@@ -92,7 +84,7 @@ def test_parse_reference(ref, parsed):
     assert updates.parse_reference(ref) == parsed
 
 
-def test_newer_images_skips_pinned_and_local_builds_and_checks_caddy_bases(host):
+def test_newer_images_skips_pinned_and_local_only_images(host):
     asked = []
 
     def remote(ref):
@@ -107,7 +99,7 @@ def test_newer_images_skips_pinned_and_local_builds_and_checks_caddy_bases(host)
 
 def test_an_image_that_cannot_be_checked_is_named(host):
     def remote(ref):
-        if "oreo-cloud" in ref:
+        if ref.endswith("/oreo-cloud:latest"):
             raise urllib.error.URLError("timed out")
         return REMOTE[ref]
 
@@ -129,8 +121,9 @@ def test_summary_lines(host):
 
 
 def test_a_newer_oreo_image_is_pulled_before_update_all():
-    assert updates._images_command(["oreo-cloud", "caddy"]) == (
-        "image-update, or: cd ~/oreo-cloud && docker compose pull && docker compose up -d"
+    assert updates._images_command(["oreo-cloud", "oreo-cloud-proxy"]) == (
+        "image-update, or: cd ~/oreo-cloud && docker compose pull heartbeat agent"
+        " && docker compose up -d"
         " && docker compose run --rm agent update all"
     )
 
