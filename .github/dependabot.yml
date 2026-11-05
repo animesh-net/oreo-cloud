@@ -1,5 +1,5 @@
 # Weekly pull requests that move the pinned versions forward: the GitHub Actions (pinned to
-# commit SHAs), the Python base image, the proxy's Caddy base images and the Python packages.
+# commit SHAs), the Python base image and the Python packages.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -13,12 +13,6 @@ updates:
         patterns: ["*"]
   - package-ecosystem: docker
     directory: /
-    schedule:
-      interval: weekly
-    assignees:
-      - animesh-net
-  - package-ecosystem: docker
-    directory: /proxy
     schedule:
       interval: weekly
     assignees:
