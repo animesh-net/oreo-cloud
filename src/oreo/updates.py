@@ -16,14 +16,13 @@ from pathlib import Path
 from oreo import net
 
 HOST = Path("/proc/1/root")
-# Caddy is built on the Pi, so its own image has no registry to compare with; its base images do.
-CADDY = "/home/animesh/caddy"
-CADDY_DOCKERFILE = HOST / CADDY.lstrip("/") / "Dockerfile"
 # Registry logins, for private images such as this one.
 DOCKER_CONFIGS = (HOST / "home/animesh/.docker/config.json", HOST / "root/.docker/config.json")
 DOCKER_PACKAGES = ("docker", "containerd", "runc")
 # The os-update and image-update aliases are set up as in the README; the long forms work
 # without them.
+# Pulled by hand; the photo app is pulled only by `update immich`, after its database dump.
+OREO_SERVICES = "heartbeat agent"
 OS_COMMAND = "os-update, or: cd ~/oreo-cloud && docker compose run --rm agent update os"
 ACCEPT = ", ".join(
     (
@@ -118,26 +117,6 @@ def remote_digest(ref: str, opener: Opener = urllib.request.urlopen) -> str:
     return _head(url, headers, opener)
 
 
-def _base_images() -> list[str]:
-    try:
-        text = CADDY_DOCKERFILE.read_text()
-    except OSError:
-        return []
-    refs, stages = [], set()
-    for line in text.splitlines():
-        words = line.split()
-        if not words or words[0].upper() != "FROM":
-            continue
-        words = [word for word in words[1:] if not word.startswith("--")]
-        if not words:
-            continue
-        if words[0] not in stages and words[0] != "scratch" and "$" not in words[0]:
-            refs.append(words[0])
-        if len(words) == 3 and words[1].upper() == "AS":
-            stages.add(words[2])
-    return refs
-
-
 def _local_digests(run: net.Runner, ref: str) -> set[str]:
     result = run(["docker", "image", "inspect", "-f", "{{json .RepoDigests}}", ref])
     if result.returncode != 0:
@@ -152,17 +131,12 @@ def newer_images(
     run: net.Runner = net.host_run, remote: RemoteDigest = remote_digest
 ) -> tuple[list[str], list[str]]:
     """Images, by short name, with a newer version in their registry, and those that could
-    not be checked. Images built on the Pi are skipped; their base images are checked."""
-    result = run(
-        ["docker", "ps", "--format",
-         '{{.Image}}\t{{.Label "com.docker.compose.project.working_dir"}}']
-    )  # fmt: skip
+    not be checked. Images pinned to a digest are skipped."""
+    result = run(["docker", "ps", "--format", "{{.Image}}"])
     if result.returncode != 0:
         raise UpdateCheckError("docker ps failed")
-    running = [line.split("\t") + [""] for line in result.stdout.splitlines() if line.strip()]
-    # Caddy's image is built from its folder, so it can carry a digest no registry knows.
-    pulled = [image for image, folder, *_ in running if folder != CADDY]
-    refs = list(dict.fromkeys([*pulled, *_base_images()]))
+    running = [line.split("\t")[0] for line in result.stdout.splitlines() if line.strip()]
+    refs = list(dict.fromkeys(running))
     newer, unchecked = [], []
     for ref in refs:
         if parse_reference(ref) is None:
@@ -180,10 +154,10 @@ def newer_images(
 
 
 def _images_command(newer: list[str]) -> str:
-    """Immich and Caddy update through `update all`; this image needs a pull first."""
+    """Immich and the proxy update through `update all`; this image needs a pull first."""
     steps = ["cd ~/oreo-cloud"]
     if "oreo-cloud" in newer:
-        steps.append("docker compose pull && docker compose up -d")
+        steps.append(f"docker compose pull {OREO_SERVICES} && docker compose up -d")
     steps.append("docker compose run --rm agent update all")
     command = "image-update, or: " + " && ".join(steps)
     if any(name.startswith("immich") for name in newer):

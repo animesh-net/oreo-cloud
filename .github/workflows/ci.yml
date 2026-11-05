@@ -57,6 +57,17 @@ jobs:
           ENV
           docker compose -f mac/docker-compose.yml config >/dev/null
           rm mac/.env
+      - name: Validate the Pi's compose file
+        # Same idea as the mac/ check: dummy values only, removed straight after.
+        run: |
+          printf '%s\n' DOCKER_GID=999 OREO_HEARTBEAT_TOKEN=ci OREO_NTFY_URL=https://ntfy.invalid/ci \
+            OREO_BIND_IP=127.0.0.1 UPLOAD_LOCATION=/tmp/ci-photos DB_DATA_LOCATION=/tmp/ci-db \
+            DB_PASSWORD=ci > .env
+          printf '%s\n' CLOUDFLARE_API_TOKEN=ci > proxy.env
+          docker compose config >/dev/null
+          rm .env proxy.env
+      - name: Check shell scripts
+        run: shellcheck pi/migrate.sh
       - name: Install restic
         # tests/test_backup_restic.py runs the backup against a real repository.
         run: sudo apt-get update -q && sudo apt-get install -y -q restic
