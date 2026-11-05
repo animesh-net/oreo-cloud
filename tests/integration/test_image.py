@@ -245,7 +245,22 @@ REQUIRED_ENV = {
     "OREO_HEARTBEAT_TOKEN": "x",
     "OREO_NTFY_URL": "https://ntfy.example/topic",
     "OREO_BIND_IP": "100.64.0.5",
+    "UPLOAD_LOCATION": "/tmp/photos",
+    "DB_DATA_LOCATION": "/tmp/db",
+    "DB_PASSWORD": "x",
 }
+
+
+@pytest.fixture(autouse=True)
+def proxy_env():
+    """compose.yaml requires proxy.env next to it, as on the Pi; a dummy one for the test."""
+    path = ROOT / "proxy.env"
+    created = not path.exists()
+    if created:
+        path.write_text("CLOUDFLARE_API_TOKEN=x\n")
+    yield
+    if created:
+        path.unlink()
 
 
 # One variable missing at a time: with several missing, compose reports
@@ -308,7 +323,14 @@ def test_compose_image_tag_can_be_pinned_for_rollback():
         capture_output=True, text=True, env=env, check=True,
     )  # fmt: skip
     services = json.loads(result.stdout)["services"]
-    assert {s["image"] for s in services.values()} == {"ghcr.io/animesh-net/oreo-cloud:sha-abc1234"}
+    ours = {name: services[name]["image"] for name in ("heartbeat", "agent", "proxy")}
+    assert ours == {
+        "heartbeat": "ghcr.io/animesh-net/oreo-cloud:sha-abc1234",
+        "agent": "ghcr.io/animesh-net/oreo-cloud:sha-abc1234",
+        "proxy": "ghcr.io/animesh-net/oreo-cloud-proxy:sha-abc1234",
+    }
+    # The photo app keeps its own version; only `update immich` moves it.
+    assert services["photos"]["image"] == "ghcr.io/immich-app/immich-server:v3"
 
 
 def test_agent_can_run_commands_on_the_host():
@@ -337,7 +359,12 @@ def test_agent_runs_host_commands_in_a_host_only_folder(tmp_path):
 
 def test_image_ships_its_settings_and_the_pis_files():
     # The Pi gets compose.yaml and .env.example from the image, not from git.
-    for name, path in (("compose", "compose.yaml"), ("env-example", ".env.example")):
+    shipped_files = (
+        ("compose", "compose.yaml"),
+        ("env-example", ".env.example"),
+        ("migrate", "pi/migrate.sh"),
+    )
+    for name, path in shipped_files:
         result = docker("run", "--rm", IMAGE, "show", name)
         assert result.stdout == (ROOT / path).read_text()
     shipped = docker("run", "--rm", "--entrypoint", "cat", IMAGE, "/usr/share/oreo/settings.env")
