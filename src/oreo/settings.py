@@ -15,8 +15,8 @@ SHARE_DIR = Path("/usr/share/oreo")
 FILES = {"compose": "compose.yaml", "env-example": ".env.example", "migrate": "migrate.sh"}
 HOST_COMPOSE_FILE = "/host/home/animesh/oreo-cloud/compose.yaml"
 REFRESH = (
-    "cd ~/oreo-cloud && docker run --rm ghcr.io/animesh-net/oreo-cloud show compose > "
-    "compose.yaml && docker compose up -d"
+    "image-update, or: cd ~/oreo-cloud && docker run --rm ghcr.io/animesh-net/oreo-cloud "
+    "show compose > compose.yaml && docker compose up -d"
 )
 
 
