@@ -23,6 +23,7 @@ DOCKER_PACKAGES = ("docker", "containerd", "runc")
 # without them.
 # Pulled by hand; the photo app is pulled only by `update immich`, after its database dump.
 OREO_SERVICES = "heartbeat agent"
+OREO_IMAGE = "ghcr.io/animesh-net/oreo-cloud"
 OS_COMMAND = "os-update, or: cd ~/oreo-cloud && docker compose run --rm agent update os"
 ACCEPT = ", ".join(
     (
@@ -154,10 +155,14 @@ def newer_images(
 
 
 def _images_command(newer: list[str]) -> str:
-    """Immich and the proxy update through `update all`; this image needs a pull first."""
+    """Immich and the proxy update through `update all`; this image needs a pull first, and
+    its compose.yaml is written out so a changed one is applied in the same step."""
     steps = ["cd ~/oreo-cloud"]
     if "oreo-cloud" in newer:
-        steps.append(f"docker compose pull {OREO_SERVICES} && docker compose up -d")
+        steps.append(
+            f"docker compose pull {OREO_SERVICES} && docker run --rm {OREO_IMAGE} show compose"
+            " > compose.yaml && docker compose up -d"
+        )
     steps.append("docker compose run --rm agent update all")
     command = "image-update, or: " + " && ".join(steps)
     if any(name.startswith("immich") for name in newer):
