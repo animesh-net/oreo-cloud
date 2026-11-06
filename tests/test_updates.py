@@ -123,6 +123,7 @@ def test_summary_lines(host):
 def test_a_newer_oreo_image_is_pulled_before_update_all():
     assert updates._images_command(["oreo-cloud", "oreo-cloud-proxy"]) == (
         "image-update, or: cd ~/oreo-cloud && docker compose pull heartbeat agent"
+        " && docker run --rm ghcr.io/animesh-net/oreo-cloud show compose > compose.yaml"
         " && docker compose up -d"
         " && docker compose run --rm agent update all"
     )

@@ -82,6 +82,7 @@ def test_outdated_compose_fails_with_the_refresh_command(share, monkeypatch, tmp
     check = settings.compose_check()
     assert not check.ok
     assert "show compose > compose.yaml" in check.detail
+    assert check.detail.split("refresh it: ")[1].startswith("image-update, or: ")
 
 
 def test_compose_not_found_is_not_a_problem(share, monkeypatch, tmp_path):
