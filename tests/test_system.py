@@ -74,6 +74,42 @@ class Clock:
         return self.now
 
 
+def test_memory_over_the_limit_fails_only_once_it_lasts(monkeypatch, tmp_path):
+    monkeypatch.setattr(system, "_high_since", {})
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text("MemTotal:  1000 kB\nMemAvailable:  200 kB\n")
+    clock, results = Clock(), []
+    for minute in range(3):
+        clock.now = minute * 60
+        results.append(system.check_memory(70, meminfo, 120, clock))
+    assert [check.ok for check in results] == [True, True, False]
+    assert results[2].detail == "80% used, over 70% for 2 min"
+
+
+def test_memory_back_under_the_limit_resets_the_timer(monkeypatch, tmp_path):
+    monkeypatch.setattr(system, "_high_since", {})
+    meminfo = tmp_path / "meminfo"
+    clock = Clock()
+    meminfo.write_text("MemTotal:  1000 kB\nMemAvailable:  200 kB\n")
+    system.check_memory(70, meminfo, 120, clock)
+    meminfo.write_text("MemTotal:  1000 kB\nMemAvailable:  500 kB\n")
+    clock.now = 60
+    assert system.check_memory(70, meminfo, 120, clock).ok
+    assert "memory" not in system._high_since
+
+
+def test_hot_temperature_fails_only_once_it_lasts(monkeypatch, tmp_path):
+    monkeypatch.setattr(system, "_high_since", {})
+    sensor = tmp_path / "temp"
+    sensor.write_text("58000\n")
+    clock, results = Clock(), []
+    for minute in range(3):
+        clock.now = minute * 60
+        results.append(system.check_temperature(55, sensor, 120, clock))
+    assert [check.ok for check in results] == [True, True, False]
+    assert results[2].detail == "58.0°C, over 55°C for 2 min"
+
+
 def test_cpu_usage_is_measured_between_readings(monkeypatch, tmp_path):
     monkeypatch.setattr(system, "_cpu_last", (0.0, 100, 200))
     monkeypatch.setattr(system, "_cpu_high_since", None)
