@@ -51,7 +51,7 @@ def test_repository_settings_parse(monkeypatch):
     monkeypatch.setenv("OREO_SETTINGS_FILE", str(path))
     monkeypatch.delenv("OREO_MEMORY_MAX_PERCENT", raising=False)
     settings.load()
-    assert float(settings.os.environ["OREO_MEMORY_MAX_PERCENT"]) == 50
+    assert float(settings.os.environ["OREO_MEMORY_MAX_PERCENT"]) == 70
 
 
 def test_the_cutover_script_ships_in_the_image():

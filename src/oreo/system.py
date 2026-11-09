@@ -30,7 +30,26 @@ def check_disk(path: str, max_percent: float, require_mount: bool = False) -> Ch
     return Check(f"disk {path}", percent <= max_percent, f"{percent:.0f}% used")
 
 
-def check_memory(max_percent: float, meminfo: Path = Path("/proc/meminfo")) -> Check:
+# When memory and temperature first went over their limits. Like the CPU's, they live as long
+# as the process, so the agent's every-minute run sees how long a reading has stayed high.
+_high_since: dict[str, float] = {}
+
+
+def _over_for(name: str, over: bool, clock: Callable[[], float]) -> float:
+    """Seconds `name` has been over its limit; 0 when it is under or has just gone over."""
+    if not over:
+        _high_since.pop(name, None)
+        return 0.0
+    now = clock()
+    return now - _high_since.setdefault(name, now)
+
+
+def check_memory(
+    max_percent: float,
+    meminfo: Path = Path("/proc/meminfo"),
+    sustained_seconds: float = 0,
+    clock: Callable[[], float] = time.monotonic,
+) -> Check:
     try:
         fields = {}
         for line in meminfo.read_text().splitlines():
@@ -39,11 +58,18 @@ def check_memory(max_percent: float, meminfo: Path = Path("/proc/meminfo")) -> C
         percent = (1 - fields["MemAvailable"] / fields["MemTotal"]) * 100
     except (OSError, KeyError, ValueError) as error:
         return Check("memory", False, f"cannot read {meminfo}: {error}")
-    return Check("memory", percent <= max_percent, f"{percent:.0f}% used")
+    lasted = _over_for("memory", percent > max_percent, clock)
+    if percent <= max_percent:
+        return Check("memory", True, f"{percent:.0f}% used")
+    detail = f"{percent:.0f}% used, over {max_percent:g}% for {lasted / 60:.0f} min"
+    return Check("memory", lasted < sustained_seconds, detail)
 
 
 def check_temperature(
-    max_celsius: float, sensor: Path = Path("/sys/class/thermal/thermal_zone0/temp")
+    max_celsius: float,
+    sensor: Path = Path("/sys/class/thermal/thermal_zone0/temp"),
+    sustained_seconds: float = 0,
+    clock: Callable[[], float] = time.monotonic,
 ) -> Check:
     try:
         celsius = int(sensor.read_text()) / 1000
@@ -51,7 +77,11 @@ def check_temperature(
         return Check("temperature", True, "no sensor")
     except (OSError, ValueError) as error:
         return Check("temperature", False, f"cannot read {sensor}: {error}")
-    return Check("temperature", celsius <= max_celsius, f"{celsius:.1f}°C")
+    lasted = _over_for("temperature", celsius > max_celsius, clock)
+    if celsius <= max_celsius:
+        return Check("temperature", True, f"{celsius:.1f}°C")
+    detail = f"{celsius:.1f}°C, over {max_celsius:g}°C for {lasted / 60:.0f} min"
+    return Check("temperature", lasted < sustained_seconds, detail)
 
 
 # The previous /proc/stat reading and when CPU usage first went over the limit. They live as
@@ -104,8 +134,18 @@ def run() -> list[Check]:
     paths = _env_list("OREO_DISK_PATHS", "/")
     must_mount = set(_env_list("OREO_MOUNT_PATHS", ""))
     checks = [check_disk(path, disk_max, path in must_mount) for path in paths]
-    checks.append(check_memory(_env_float("OREO_MEMORY_MAX_PERCENT", 90)))
-    checks.append(check_temperature(_env_float("OREO_TEMPERATURE_MAX_C", 75)))
+    checks.append(
+        check_memory(
+            _env_float("OREO_MEMORY_MAX_PERCENT", 90),
+            sustained_seconds=_env_float("OREO_MEMORY_SUSTAINED_SECONDS", 120),
+        )
+    )
+    checks.append(
+        check_temperature(
+            _env_float("OREO_TEMPERATURE_MAX_C", 75),
+            sustained_seconds=_env_float("OREO_TEMPERATURE_SUSTAINED_SECONDS", 120),
+        )
+    )
     checks.append(
         check_cpu(
             _env_float("OREO_CPU_MAX_PERCENT", 90),
