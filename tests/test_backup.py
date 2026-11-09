@@ -70,6 +70,7 @@ def pi(tmp_path, monkeypatch):
         "PACKAGE_LIST": tmp_path / "packages.txt",
         "DUMPS": dumps,
         "DUMP_COPIES": tmp_path / "flash/immich-db",
+        "OREO_AI_DUMPS": tmp_path / "flash/oreo-ai-db",
         "LOCK_FILE": tmp_path / "lock",
     }
     for name, value in patches.items():
@@ -113,6 +114,7 @@ def test_report_matches_the_nightly_message(pi, sent):
         "✅ System settings: 6 of 6 folders saved (4210 files, 3 new, 12 changed), "
         "30 versions kept\n"
         "✅ Immich database: 2K dump, copied to flash drive and verified, 1 copy kept\n"
+        "➖ oreo-ai database: oreo-ai-db not running, dump skipped\n"
         "✅ Data (Hot Tier | data-hot-ssd1): healthy\n"
         "✅ Storage: all drives mounted, none nearly full, no disk errors logged\n"
         "💾 Flash drive: 52G free\n"
@@ -228,6 +230,68 @@ def test_stale_dump_alerts(pi, sent):
     ok, _ = go(sent)
     assert not ok
     assert "no Immich database dump newer than 36 hours" in sent[0][0]
+
+
+def pg_dump_writing(content):
+    def dump(path):
+        path.write_bytes(content)
+
+    return dump
+
+
+def test_oreo_ai_database_is_dumped_to_the_flash_drive(pi):
+    old = pi / "flash/oreo-ai-db/oreo-ai-20260901-033000.dump"
+    old.parent.mkdir(parents=True)
+    old.write_bytes(b"PGDMP old")
+    os.utime(old, (NIGHT.timestamp() - 30 * 86400,) * 2)
+    line = backup.dump_oreo_ai_database(
+        NIGHT, running=lambda: True, dump=pg_dump_writing(b"PGDMP" + b"x" * 3000)
+    )
+    assert line == "✅ oreo-ai database: 3K dump saved to flash drive, 1 copy kept"
+    [dump] = (pi / "flash/oreo-ai-db").iterdir()
+    assert dump.name == "oreo-ai-20261019-033000.dump"
+    assert dump.stat().st_mode & 0o777 == 0o600
+
+
+def test_oreo_ai_dump_is_skipped_when_its_database_is_not_running(pi):
+    line = backup.dump_oreo_ai_database(NIGHT, running=lambda: False)
+    assert line == "➖ oreo-ai database: oreo-ai-db not running, dump skipped"
+    assert not (pi / "flash/oreo-ai-db").exists()
+
+
+def test_failed_oreo_ai_dump_fails_the_backup(pi, sent, monkeypatch):
+    def broken(path):
+        path.write_bytes(b"")
+        raise backup.BackupError("osbackup: oreo-ai DB dump problem: pg_dump failed: boom")
+
+    monkeypatch.setattr(backup, "_oreo_ai_running", lambda: True)
+    monkeypatch.setattr(backup, "_pg_dump_oreo_ai", broken)
+    ok, _ = go(sent)
+    assert not ok
+    assert "pg_dump failed: boom" in sent[0][0]
+    assert list((pi / "flash/oreo-ai-db").iterdir()) == []
+
+
+def test_oreo_ai_dump_that_is_not_a_pg_dump_file_is_not_kept(pi):
+    with pytest.raises(backup.BackupError, match="not a pg_dump file"):
+        backup.dump_oreo_ai_database(NIGHT, running=lambda: True, dump=pg_dump_writing(b""))
+    assert list((pi / "flash/oreo-ai-db").iterdir()) == []
+
+
+def test_oreo_ai_running_reads_the_container_state(monkeypatch):
+    calls = []
+
+    def inspect(command):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "true\n", "")
+
+    monkeypatch.setattr(net, "host_run", inspect)
+    assert backup._oreo_ai_running()
+    assert calls == [["docker", "inspect", "-f", "{{.State.Running}}", "oreo-ai-db"]]
+    monkeypatch.setattr(
+        net, "host_run", lambda c: subprocess.CompletedProcess(c, 1, "", "No such object")
+    )
+    assert not backup._oreo_ai_running()
 
 
 def legacy(active):

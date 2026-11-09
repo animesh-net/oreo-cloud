@@ -35,7 +35,7 @@ Every image comes from GHCR, so the Pi never builds anything and pulls from one 
 
 `ai.animesh.org.in` forwards to the oreo-ai web app, which runs on the Pi in its own compose project, `oreo-ai`, and publishes `127.0.0.1:8080`, with streamed replies passed on as they arrive. The app has its own sign-in, so there is no proxy password. It talks to Cloudflare Workers AI, or to Ollama on the MacBook Air over Tailscale; the Mac runs only Ollama now. The site is in the website checks, through the app's `/health`.
 
-So the Pi runs another compose project beside this one: oreo-ai (containers `oreo-ai-web`, `oreo-ai-db` and the one-shot `oreo-ai-db-migrate`). The two are kept apart: separate folders (`~/oreo-cloud` and `~/oreo-ai`), separate compose files and settings, and neither touches the other's files. oreo-ai is set up and run from its own repository's image; `image-update` (below) updates it after oreo-cloud.
+So the Pi runs another compose project beside this one: oreo-ai (containers `oreo-ai-web`, `oreo-ai-db` and the one-shot `oreo-ai-db-migrate`). The two are kept apart: separate folders (`~/oreo-cloud` and `~/oreo-ai`), separate compose files and settings, and neither touches the other's files. oreo-ai is set up and run from its own repository's image; `image-update` (below) updates it after oreo-cloud, and the nightly backup dumps its database.
 
 ### What runs when
 
@@ -49,7 +49,7 @@ So the Pi runs another compose project beside this one: oreo-ai (containers `ore
 | Websites | Every 30 minutes | `cloud.animesh.org.in`, `pi.animesh.org.in` and `ai.animesh.org.in` answer, and their certificates have at least 14 days left. |
 | Backup age | Every 30 minutes | Alerts if the last good backup is more than 26 hours old. |
 | Setup | Every 30 minutes | Alerts if the Pi's `compose.yaml` differs from the one in the image, with the command to refresh it. |
-| Nightly backup | 03:30 | Saves the Pi's settings with restic and copies Immich's database dump to the flash drive, then sends the nightly report. The report also lists available OS, security and Docker updates, and a pending reboot; nothing is installed by itself. Runs later if the Pi was off at 03:30. |
+| Nightly backup | 03:30 | Saves the Pi's settings with restic (this includes `~/oreo-ai/.env.local`), copies Immich's database dump to the flash drive and dumps oreo-ai's database there too (skipped, not failed, while `oreo-ai-db` is not running), then sends the nightly report. The report also lists available OS, security and Docker updates, and a pending reboot; nothing is installed by itself. Runs later if the Pi was off at 03:30. |
 
 ### Alerts on my phone
 
@@ -175,6 +175,26 @@ cd ~/oreo-cloud && docker compose pull heartbeat agent && docker run --rm ghcr.i
 If the Pi's `compose.yaml` ever differs from the image's, for example after a pull without `image-update`, the agent sends a **Setup** alert; `image-update` clears it.
 
 The last 10 images are kept. To roll back, add `OREO_IMAGE_TAG=sha-<commit>` to `.env` and run `docker compose up -d`. Remove that line to go back to the latest. The tag applies to the proxy and cache images too, which are built from the same commit.
+
+### Restore oreo-ai's chats
+
+The nightly backup writes oreo-ai's database to `/mnt/osbackup/oreo-ai-db/oreo-ai-<date>-<time>.dump` on the flash drive and keeps 14 days of them. oreo-ai's `~/oreo-ai/.env.local` is in the restic snapshot with the rest of `/home/animesh`; it holds `ENCRYPTION_KEY`, without which the API keys saved in a restored database cannot be read. Nothing of oreo-ai is kept in `~/oreo-cloud`.
+
+Only if `~/oreo-ai/.env.local` is gone, get it back from the newest snapshot first, before oreo-ai is started (starting it would create a new one with new secrets):
+
+```bash
+mkdir -p ~/oreo-ai && cd ~/oreo-cloud && docker compose run --rm -T --entrypoint restic agent -r /proc/1/root/mnt/osbackup/restic --password-file /proc/1/root/root/.restic-pass --no-cache dump latest /host/home/animesh/oreo-ai/.env.local > ~/oreo-ai/.env.local && chmod 600 ~/oreo-ai/.env.local
+```
+
+Then start oreo-ai so its database runs, copy the newest dump into its folder and restore it with oreo-ai's own script, one line at a time:
+
+```bash
+bash ~/oreo-ai/scripts/oreo-ai.sh on
+f=$(sudo ls -t /mnt/osbackup/oreo-ai-db | grep '\.dump$' | head -1); mkdir -p ~/oreo-ai/backups && sudo install -m 600 -o "$USER" "/mnt/osbackup/oreo-ai-db/$f" ~/oreo-ai/backups/ && echo "$f"
+bash ~/oreo-ai/scripts/restore-db.sh ~/oreo-ai/backups/"$f"
+```
+
+`restore-db.sh` refuses to replace a database that already holds conversations; add `--force` to replace it. It prints the row counts afterwards. For an older dump, pick its name from `sudo ls /mnt/osbackup/oreo-ai-db` instead.
 
 ### Moving from ~/immich and ~/caddy (one time)
 

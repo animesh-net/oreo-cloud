@@ -1,5 +1,6 @@
 """Nightly backup: system settings to restic on the flash drive, Immich database dump copied
-and verified, then one report with drive health and storage.
+and verified, oreo-ai's database dumped to the flash drive, then one report with drive health
+and storage.
 
 Port of the host's oreo-osbackup.sh with the same steps, checks and wording. Sources are the
 host folders mounted read-only under /host in compose.yaml, so snapshots record /host/etc and
@@ -43,6 +44,13 @@ DUMP_MAX_AGE_HOURS = 36
 # folder; those are copied too but must not count as proof that Immich still dumps.
 IMMICH_DUMP_PREFIX = "immich-db-backup-"
 DUMP_KEEP_DAYS = 14
+# oreo-ai runs on the Pi as its own compose project in ~/oreo-ai. Its database is dumped
+# straight to the flash drive, next to the Immich copies; its .env.local (with ENCRYPTION_KEY)
+# is in the restic snapshot through /host/home/animesh.
+OREO_AI_DB = "oreo-ai-db"
+OREO_AI_DUMPS = HOST / "mnt/osbackup/oreo-ai-db"
+OREO_AI_DUMP = 'pg_dump -Fc --no-owner --no-privileges -U "$POSTGRES_USER" "$POSTGRES_DB"'
+PG_CUSTOM_MAGIC = b"PGDMP"
 DEFAULT_TIME = "03:30"
 DEFAULT_MAX_AGE_HOURS = 26
 SEND_ATTEMPTS = 3
@@ -175,6 +183,66 @@ def copy_database_dump(now: datetime) -> str:
     )
 
 
+def _oreo_ai_running() -> bool:
+    result = net.host_run(["docker", "inspect", "-f", "{{.State.Running}}", OREO_AI_DB])
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
+def _pg_dump_oreo_ai(path: Path) -> None:
+    command = [
+        "ionice", "-c3", "nice", "-n19", *net.HOST_PREFIX,
+        "docker", "exec", OREO_AI_DB, "sh", "-c", OREO_AI_DUMP,
+    ]  # fmt: skip
+    with path.open("wb") as out:
+        result = subprocess.run(command, stdout=out, stderr=subprocess.PIPE, check=False)
+    if result.returncode != 0:
+        detail = result.stderr.decode(errors="replace").strip().splitlines() or ["no output"]
+        raise BackupError(
+            "osbackup: settings backup done, but oreo-ai DB dump problem: "
+            f"pg_dump failed: {detail[-1]}"
+        )
+
+
+def dump_oreo_ai_database(
+    now: datetime,
+    running: Callable[[], bool] | None = None,
+    dump: Callable[[Path], None] | None = None,
+) -> str:
+    """Dump oreo-ai's chat database to the flash drive. oreo-ai is optional on the Pi, so a
+    missing or stopped oreo-ai-db is skipped, but a dump that fails while it runs is not."""
+    running = running or _oreo_ai_running
+    dump = dump or _pg_dump_oreo_ai
+    if not running():
+        print(f"oreo backup: {OREO_AI_DB} is not running, its dump is skipped", flush=True)
+        return f"➖ oreo-ai database: {OREO_AI_DB} not running, dump skipped"
+    problem = "osbackup: settings backup done, but oreo-ai DB dump problem: "
+    stamp = _local_now(now).strftime("%Y%m%d-%H%M%S")
+    path = OREO_AI_DUMPS / f"oreo-ai-{stamp}.dump"
+    partial = path.with_name(path.name + ".partial")
+    try:
+        OREO_AI_DUMPS.mkdir(parents=True, exist_ok=True)
+        try:
+            dump(partial)
+            with partial.open("rb") as written:
+                if written.read(len(PG_CUSTOM_MAGIC)) != PG_CUSTOM_MAGIC:
+                    raise BackupError(problem + "the dump is empty or not a pg_dump file")
+            partial.chmod(0o600)
+            partial.rename(path)
+        finally:
+            partial.unlink(missing_ok=True)
+        for old in OREO_AI_DUMPS.glob("oreo-ai-*.dump"):
+            if now.timestamp() - old.stat().st_mtime > DUMP_KEEP_DAYS * 86400:
+                old.unlink()
+    except OSError as error:
+        raise BackupError(problem + f"writing it to the flash drive failed: {error}") from error
+    kept = len(list(OREO_AI_DUMPS.glob("oreo-ai-*.dump")))
+    size = drives.human(path.stat().st_size)
+    return (
+        f"✅ oreo-ai database: {size} dump saved to flash drive, "
+        f"{kept} {'copy' if kept == 1 else 'copies'} kept"
+    )
+
+
 def _flash_free() -> str:
     return drives.human(shutil.disk_usage(HOST / FLASH_MOUNT.lstrip("/")).free)
 
@@ -246,6 +314,7 @@ def run(
                 raise BackupError("osbackup: restic repository missing, job skipped")
             settings = back_up_settings(run_cmd, now)
             database = copy_database_dump(now)
+            oreo_ai = dump_oreo_ai_database(now)
     except BackupError as error:
         _alert(str(error), send, sleep)
         return False
@@ -253,7 +322,7 @@ def run(
     health = [drives.line(check) for check in drives.run()]
     store = storage.summary(storage.run())
     report = "\n".join(
-        [settings, database, *health, store, f"💾 Flash drive: {_flash_free()} free"]
+        [settings, database, oreo_ai, *health, store, f"💾 Flash drive: {_flash_free()} free"]
         + updates.report()
     )
     # The backup itself succeeded either way; a report that could not be sent is only logged.
