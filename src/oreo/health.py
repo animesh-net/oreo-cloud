@@ -5,6 +5,9 @@ from oreo.checks import Check
 
 IGNORE_LABEL = "oreo.ignore"
 ONE_OFF_LABEL = "com.docker.compose.oneoff"
+# Compose services that run once and exit: oreo-ai's migrations, which stay as a stopped
+# container after its `up -d`. Only a clean exit is skipped; a failed one still alerts.
+ONE_SHOT_CONTAINERS = ("oreo-ai-db-migrate",)
 
 
 def check_containers(containers: list[dict]) -> list[Check]:
@@ -19,6 +22,8 @@ def check_containers(containers: list[dict]) -> list[Check]:
         name = container["Names"][0].lstrip("/")
         state = container.get("State", "unknown")
         status = container.get("Status", "")
+        if name in ONE_SHOT_CONTAINERS and state == "exited" and status.startswith("Exited (0)"):
+            continue
         if state != "running":
             checks.append(Check(f"container {name}", False, f"{state}: {status}"))
         elif "(unhealthy)" in status:

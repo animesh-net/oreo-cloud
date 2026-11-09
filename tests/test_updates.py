@@ -129,6 +129,14 @@ def test_a_newer_oreo_image_is_pulled_before_update_all():
     )
 
 
+def test_a_newer_oreo_ai_image_is_updated_in_its_own_folder():
+    assert updates._images_command(["oreo-ai-web"]) == (
+        "image-update, or: cd ~/oreo-cloud && docker compose run --rm agent update all"
+        " && docker run --rm --pull always ghcr.io/animesh-net/oreo-ai | tar -xf - -C ~/oreo-ai"
+        " && bash ~/oreo-ai/scripts/oreo-ai.sh on"
+    )
+
+
 def test_summary_when_everything_is_current(host):
     fake = FakeHost(apt="NOTE: This is only a simulation!\n", ps=RUNNING)
     lines = updates.summary(fake, lambda ref: LOCAL[ref][0].split("@")[1])

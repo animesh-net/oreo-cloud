@@ -71,4 +71,4 @@ def test_unreadable_certificate_fails():
 def test_sites_come_from_the_setting(monkeypatch):
     monkeypatch.setenv("OREO_SITES", "https://a.example/, https://b.example/x")
     assert sites.configured() == ["https://a.example/", "https://b.example/x"]
-    assert len(sites.DEFAULT_SITES.split(",")) == 2
+    assert len(sites.DEFAULT_SITES.split(",")) == 3
