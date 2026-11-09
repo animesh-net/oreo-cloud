@@ -15,7 +15,10 @@ from urllib.parse import urlsplit
 
 from oreo.checks import Check
 
-DEFAULT_SITES = "https://cloud.animesh.org.in/api/server/ping,https://pi.animesh.org.in/"
+DEFAULT_SITES = (
+    "https://cloud.animesh.org.in/api/server/ping,https://pi.animesh.org.in/,"
+    "https://ai.animesh.org.in/health"
+)
 DEFAULT_CERT_MIN_DAYS = 14
 TIMEOUT_SECONDS = 15
 

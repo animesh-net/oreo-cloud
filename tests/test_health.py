@@ -37,6 +37,14 @@ def test_ignored_container_is_skipped():
     assert [c.name for c in checks] == ["container web"]
 
 
+def test_finished_one_shot_container_is_skipped_unless_it_failed():
+    done = container("oreo-ai-db-migrate", state="exited", status="Exited (0) 2 hours ago")
+    failed = container("oreo-ai-db-migrate", state="exited", status="Exited (1) 2 hours ago")
+    assert [c.name for c in health.check_containers([done, container("web")])] == ["container web"]
+    [check] = health.check_containers([failed])
+    assert not check.ok
+
+
 def test_no_containers_passes():
     [check] = health.check_containers([])
     assert check.ok

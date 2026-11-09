@@ -20,16 +20,16 @@ pi.animesh.org.in {
 	reverse_proxy 127.0.0.1:34001
 }
 
-# oreo-ai's web app on the MacBook Air, over Tailscale. It signs users in itself (Google or
-# Microsoft, with an allowlist), so there is no proxy password. Answers only while the Mac is
-# awake, so it is not in OREO_SITES; a sleeping Mac must not alert. flush_interval -1 passes
-# streamed replies on as they arrive.
+# oreo-ai's web app, running on this Pi as its own compose project (oreo-ai, in ~/oreo-ai) on
+# 127.0.0.1:8080. It signs users in itself (Google or Microsoft, with an allowlist), so there
+# is no proxy password. The Pi is always on, so the site always answers and is in the website
+# checks. flush_interval -1 passes streamed replies on as they arrive.
 ai.animesh.org.in {
 	bind {$OREO_BIND_IP}
 	tls {
 		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
 	}
-	reverse_proxy 100.70.213.221:8080 {
+	reverse_proxy 127.0.0.1:8080 {
 		flush_interval -1
 	}
 }
