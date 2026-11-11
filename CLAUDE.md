@@ -32,6 +32,8 @@
 - Update `README.md` in the same commit as any user-facing change (behaviour,
   setup, configuration, commands, architecture). A commit that changes
   behaviour without updating the README is incomplete.
+- Keep the README short: basic architecture and how to run it. Only settings
+  needed to run it go in its Run it table; the rest stay in `.env.example`.
 
 ## How to edit files
 
