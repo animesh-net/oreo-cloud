@@ -50,3 +50,7 @@ The nightly backup (03:30) saves the Pi's settings with restic and the Immich an
 ## Develop
 
 `python3 -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]" && pre-commit install && pytest`; image tests: `docker build -t oreo-cloud:test . && OREO_IMAGE=oreo-cloud:test pytest tests/integration`. Repo rules are in CLAUDE.md.
+
+## License
+
+Copyright © 2026 Animesh Singh. Released under the [MIT License](LICENSE).
