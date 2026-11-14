@@ -9,7 +9,19 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from oreo import alerts, backup, clock, health, net, notify, settings, sites, storage, system
+from oreo import (
+    alerts,
+    backup,
+    clock,
+    health,
+    net,
+    notify,
+    power,
+    settings,
+    sites,
+    storage,
+    system,
+)
 
 TICK_SECONDS = 15
 # A job that needs the clock waits this long before trying again while it is not synchronised.
@@ -67,6 +79,7 @@ def default_jobs(start: float = 0.0) -> list[Job]:
             _check_job("backup-age", "Backup", lambda: [backup.freshness_check()]),
             start + 50,
         ),
+        Job("power", 60, power.run_once, start + 55),
     ]
 
 

@@ -45,7 +45,9 @@ Other commands run as `docker compose run --rm agent <command>` (`system`, `stor
 sed -i '/^alias os-update=/d;/^alias image-update=/d' ~/.bashrc ~/.bash_aliases 2>/dev/null; printf '%s\n' "alias os-update='docker compose -f ~/oreo-cloud/compose.yaml run --rm agent update os'" "alias image-update='(cd ~/oreo-cloud && docker compose run --rm agent update status && docker compose pull heartbeat agent && docker run --rm ghcr.io/animesh-net/oreo-cloud show compose > compose.yaml && docker compose up -d && docker compose run --rm agent update all) && docker run --rm --pull always ghcr.io/animesh-net/oreo-ai | tar -xf - -C ~/oreo-ai && bash ~/oreo-ai/scripts/oreo-ai.sh on'" >> ~/.bashrc && source ~/.bashrc
 ```
 
-The nightly backup (03:30) saves the Pi's settings with restic and the Immich and oreo-ai database dumps to `/mnt/osbackup`; restore oreo-ai's with its `scripts/restore-db.sh`.
+The nightly backup (23:30) saves the Pi's settings with restic and the Immich and oreo-ai database dumps to `/mnt/osbackup`; restore oreo-ai's with its `scripts/restore-db.sh`.
+
+Night off: at 00:30 the agent sets the Pi's wake alarm for 06:30, checks it reads back, and powers off; it waits while a backup or OS update runs, stays on if anything fails, and reports the wake-up in the morning. It needs the bootloader set once with `sudo rpi-eeprom-config --edit`: add `POWER_OFF_ON_HALT=1` and `WAKE_ON_GPIO=0`, save, reboot. Then try one wake-up with `docker compose run --rm agent power test` (off for 10 minutes); `power status` shows the setting and the alarm. Immich's own jobs must finish before 00:30: its database backup at 23:00 and its nightly tasks at 22:00 (Administration → Settings).
 
 ## Develop
 
