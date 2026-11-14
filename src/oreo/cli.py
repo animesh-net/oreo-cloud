@@ -15,6 +15,7 @@ from oreo import (
     heartbeat,
     net,
     notify,
+    power,
     scheduler,
     settings,
     sites,
@@ -107,6 +108,12 @@ def _cmd_net(args: argparse.Namespace) -> int:
     return 0 if reachable else 1
 
 
+def _cmd_power(args: argparse.Namespace) -> int:
+    lines = power.try_wake(args.minutes) if args.action == "test" else power.status()
+    print("\n".join(lines))
+    return 1 if any(line.startswith("FAIL") for line in lines) else 0
+
+
 def _cmd_agent(args: argparse.Namespace) -> int:
     scheduler.serve()
     return 0
@@ -191,6 +198,17 @@ def build_parser() -> argparse.ArgumentParser:
         "(needs the privileged agent service)",
     )
     net_cmd.set_defaults(handler=_cmd_net)
+
+    power_cmd = commands.add_parser(
+        "power",
+        help="show the night-off schedule, bootloader setting and wake alarm, or test the "
+        "wake-up by powering off for a few minutes (needs the privileged agent service)",
+    )
+    power_cmd.add_argument("action", choices=["status", "test"])
+    power_cmd.add_argument(
+        "--minutes", type=int, default=10, help="minutes until the Pi wakes (test only)"
+    )
+    power_cmd.set_defaults(handler=_cmd_power)
 
     show_cmd = commands.add_parser(
         "show",
