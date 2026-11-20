@@ -40,6 +40,13 @@ def schedule() -> tuple[time, time] | None:
     return time.fromisoformat(off), time.fromisoformat(on)
 
 
+def _while_off(moment: time, off: time, on: time) -> bool:
+    """Whether a time of day falls in the off hours, which may cross midnight."""
+    if off <= on:
+        return off <= moment < on
+    return moment >= off or moment < on
+
+
 def next_wake(now: datetime, on: time) -> datetime:
     local = now.astimezone(_zone())
     wake = datetime.combine(local.date(), on, tzinfo=_zone())
@@ -165,10 +172,12 @@ def run_once(
     _report_morning(_load(), now, send)
     state = _load()
     local = now.astimezone(_zone())
-    today = local.date().isoformat()
     start = datetime.combine(local.date(), off, tzinfo=_zone())
+    if local < start:  # the last off time was yesterday, so a window across midnight works
+        start -= timedelta(days=1)
+    today = start.date().isoformat()
     end = start + timedelta(minutes=WINDOW_MINUTES)
-    if state.get("date") == today or local < start:
+    if state.get("date") == today:
         return False
     if local >= end:
         if state.get("waiting") == today:  # stayed busy for the whole window
@@ -228,6 +237,15 @@ def status(run: Runner = net.host_run, now: datetime | None = None) -> list[str]
         if times
         else "Schedule: not set (OREO_POWER_OFF_AT and OREO_POWER_ON_AT)"
     ]
+    if times:
+        backup_at = time.fromisoformat(os.environ.get("OREO_BACKUP_TIME", backup.DEFAULT_TIME))
+        if _while_off(backup_at, *times):
+            lines.append(
+                f"Backup: FAIL at {backup_at:%H:%M}, while the Pi is off; set OREO_BACKUP_TIME "
+                "before the off time"
+            )
+        else:
+            lines.append(f"Backup: OK   at {backup_at:%H:%M}, before the Pi powers off")
     check = bootloader_check(run)
     lines.append(f"Bootloader: {'OK  ' if check.ok else 'FAIL'} {check.detail}")
     alarm = run(["cat", WAKEALARM])

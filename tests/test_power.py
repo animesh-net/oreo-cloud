@@ -155,3 +155,53 @@ def test_try_wake_sets_the_alarm_minutes_ahead(pi):
     assert host.written == str(int((OFF + timedelta(minutes=10)).timestamp()))
     assert host.powered_off
     assert lines == ["OK    powering off; the Pi should switch itself on at 00:40"]
+
+
+# 22:30 in Asia/Kolkata on Friday 20 November 2026, and 08:30 the next morning
+EVENING = datetime(2026, 11, 20, 17, 0, tzinfo=UTC)
+MORNING = datetime(2026, 11, 21, 3, 0, tzinfo=UTC)
+
+
+@pytest.fixture
+def evening(pi, monkeypatch):
+    monkeypatch.setenv("OREO_POWER_OFF_AT", "22:30")
+    monkeypatch.setenv("OREO_POWER_ON_AT", "08:30")
+    return pi
+
+
+def test_evening_schedule_wakes_the_next_morning(evening):
+    host, sent = FakeHost(), []
+    assert power.run_once(host, send=lambda m, **k: sent.append(m), now=EVENING)
+    assert host.written == str(int(MORNING.timestamp()))
+    assert sent == ["🌙 Night off: powering off now, back on at 08:30"]
+
+
+def test_evening_schedule_stays_on_after_the_morning_wake(evening):
+    host, sent = FakeHost(), []
+    power.run_once(host, send=lambda m, **k: sent.append(m), now=EVENING)
+    booted(evening, MORNING + timedelta(minutes=1))
+    host.commands.clear()
+    for minutes in (2, 120, 600):
+        assert not power.run_once(
+            host, send=lambda m, **k: sent.append(m), now=MORNING + timedelta(minutes=minutes)
+        )
+    assert not host.powered_off
+    assert sent[1:] == ["☀️ Night off: back on at 08:31 (off at 22:30, wake alarm 08:30)"]
+
+
+def test_window_across_midnight_still_powers_off(evening, monkeypatch):
+    monkeypatch.setenv("OREO_POWER_OFF_AT", "23:50")
+    host = FakeHost()
+    # 00:05, inside the 30-minute window that started at 23:50 the evening before
+    assert power.run_once(host, send=lambda m, **k: None, now=EVENING + timedelta(minutes=95))
+    assert host.powered_off
+
+
+def test_status_flags_a_backup_inside_the_off_hours(evening, monkeypatch):
+    monkeypatch.setenv("OREO_BACKUP_TIME", "23:30")
+    lines = power.status(FakeHost(), now=EVENING)
+    assert lines[1].startswith("Backup: FAIL at 23:30")
+    monkeypatch.setenv("OREO_BACKUP_TIME", "21:30")
+    assert power.status(FakeHost(), now=EVENING)[1] == (
+        "Backup: OK   at 21:30, before the Pi powers off"
+    )
