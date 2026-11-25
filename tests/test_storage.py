@@ -1,5 +1,7 @@
+import re
 import subprocess
 from collections import namedtuple
+from datetime import datetime
 
 import pytest
 
@@ -103,6 +105,39 @@ def test_usb_dropout_names_the_drive_and_its_new_name():
         f"{HOT}: disconnected at 13:50, back as sdc, filesystem needs a check (e2fsck) "
         "(5 disk errors)"
     )
+
+
+DROPOUT_ISO = re.sub(r"^Nov 25 (\S+)", r"2026-11-25T\1+05:30", DROPOUT, flags=re.MULTILINE)
+
+
+@pytest.mark.parametrize(
+    ("fsck", "ok"),
+    [
+        (datetime(2026, 11, 25, 15, 40), True),  # e2fsck after the drop-out clears it
+        (datetime(2026, 11, 20, 10, 0), False),  # an older check does not
+        (None, False),
+    ],
+)
+def test_filesystem_check_after_the_errors_clears_them(fsck, ok):
+    asked = []
+
+    def checked(partition):
+        asked.append(partition)
+        return fsck
+
+    check = storage.check_kernel_log(journal(DROPOUT_ISO), known(), checked)
+    assert asked == ["sdc1"]  # the drive's current name, not the one in the errors
+    assert check.ok is ok
+    if ok:
+        assert check.detail == "none since the last filesystem check (e2fsck)"
+    else:
+        assert check.detail.startswith(f"{HOT}: disconnected at 13:50, back as sdc")
+
+
+def test_last_fsck_reads_dumpe2fs():
+    out = "Filesystem state:         clean\nLast checked:             Wed Nov 25 15:40:12 2026\n"
+    assert storage.last_fsck("sdc1", journal(out)) == datetime(2026, 11, 25, 15, 40, 12)
+    assert storage.last_fsck("sdc1", journal("")) is None
 
 
 def test_disk_of_handles_each_kind_of_drive():
