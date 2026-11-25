@@ -9,6 +9,8 @@ import os
 import re
 import shutil
 import subprocess
+from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 from oreo import drives, net
@@ -29,6 +31,8 @@ MOUNTED = re.compile(r"EXT4-fs \((\w+)\): mounted filesystem ([0-9a-f-]{36})", r
 DEVICE = re.compile(r"\b(sd[a-z]{1,2}\d*|nvme\d+n\d+(?:p\d+)?|mmcblk\d+(?:p\d+)?)\b")
 FILESYSTEM_STOPPED = re.compile(r"EXT4-fs error|Aborting journal|shut down requested", re.I)
 TIME = re.compile(r"\b(\d{2}:\d{2}):\d{2}\b")
+STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})")  # journalctl -o short-iso
+LAST_CHECKED = re.compile(r"^Last checked:\s+(.+)$", re.MULTILINE)
 
 
 def _unescape(field: str) -> str:
@@ -90,8 +94,31 @@ def named_drives() -> dict[str, tuple[str, str | None]]:
     }
 
 
-def describe_disk_errors(lines: list[str], known: dict[str, tuple[str, str | None]]) -> str:
-    """One phrase per disk that logged errors, named by tier and label where it is known."""
+def _stamp(line: str) -> datetime | None:
+    """The host's local time of a short-iso journal line."""
+    return datetime.fromisoformat(match.group(1)) if (match := STAMP.match(line)) else None
+
+
+def last_fsck(partition: str, run: net.Runner = net.host_run) -> datetime | None:
+    """When e2fsck last checked this partition, in the host's local time."""
+    try:
+        result = run(["dumpe2fs", "-h", f"/dev/{partition}"])
+        match = LAST_CHECKED.search(result.stdout)
+        return datetime.strptime(match.group(1).strip(), "%a %b %d %H:%M:%S %Y") if match else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def describe_disk_errors(
+    lines: list[str],
+    known: dict[str, tuple[str, str | None]],
+    checked: Callable[[str], datetime | None] = lambda partition: None,
+) -> tuple[str, int]:
+    """One phrase per disk that logged errors, named by tier and label where it is known.
+
+    A drive whose filesystem was checked after its last error is left out; the second value
+    counts those drives.
+    """
     mounted = []  # (line index, partition, uuid) of every ext4 mount in the log
     for index, line in enumerate(lines):
         if match := MOUNTED.search(line):
@@ -104,23 +131,35 @@ def describe_disk_errors(lines: list[str], known: dict[str, tuple[str, str | Non
             continue
         partition = match.group(1)
         disk = disks.setdefault(
-            disk_of(partition), {"count": 0, "offline": None, "fs": False, "uuid": None}
+            disk_of(partition),
+            {"count": 0, "offline": None, "fs": False, "uuid": None, "last": None},
         )
         disk["count"] += 1
+        disk["last"] = _stamp(line) or disk["last"]
         disk["uuid"] = disk["uuid"] or uuid_of.get(partition)
         if "device offline" in line and disk["offline"] is None:
             disk["offline"] = index
         if FILESYSTEM_STOPPED.search(line):
             disk["fs"] = True
-    phrases = []
+    phrases, cleared = [], 0
     for kernel_name, disk in sorted(disks.items()):
+        current = next(
+            (p for p, (_, u) in known.items() if disk["uuid"] and u == disk["uuid"]),
+            next((p for p in known if disk_of(p) == kernel_name), None),
+        )
+        fsck = checked(current) if current and disk["last"] else None
+        if fsck and fsck >= disk["last"]:
+            cleared += 1
+            continue
         name = by_uuid.get(disk["uuid"]) or next(
             (n for p, (n, _) in known.items() if disk_of(p) == kernel_name), f"/dev/{kernel_name}"
         )
         events = []
         if disk["offline"] is not None:
-            when = TIME.search(lines[disk["offline"]])
-            events.append("disconnected" + (f" at {when.group(1)}" if when else ""))
+            line = lines[disk["offline"]]
+            stamp, when = _stamp(line), TIME.search(line)
+            at = stamp.strftime("%H:%M") if stamp else when.group(1) if when else None
+            events.append("disconnected" + (f" at {at}" if at else ""))
             back = next(
                 (
                     disk_of(p)
@@ -135,14 +174,16 @@ def describe_disk_errors(lines: list[str], known: dict[str, tuple[str, str | Non
             events.append("filesystem needs a check (e2fsck)")
         errors = f"{disk['count']} disk error{'s' if disk['count'] != 1 else ''}"
         phrases.append(f"{name}: {', '.join(events)} ({errors})" if events else f"{name}: {errors}")
-    return "; ".join(phrases)
+    return "; ".join(phrases), cleared
 
 
-def check_kernel_log(run: net.Runner = net.host_run, known=named_drives) -> Check:
+def check_kernel_log(run: net.Runner = net.host_run, known=named_drives, checked=None) -> Check:
     name = "disk errors"
     try:
         # All priorities: the mount lines that tie a kernel name to a drive are not errors.
-        result = run(["journalctl", "-k", "--since", "26 hours ago", "--no-pager", "-q"])
+        result = run(
+            ["journalctl", "-k", "--since", "26 hours ago", "-o", "short-iso", "--no-pager", "-q"]
+        )
     except (OSError, subprocess.SubprocessError) as error:
         return Check(name, False, f"cannot read the kernel log: {error}")
     if result.returncode not in (0, 1):  # 1: no entries
@@ -151,7 +192,11 @@ def check_kernel_log(run: net.Runner = net.host_run, known=named_drives) -> Chec
     count = sum(1 for line in lines if DISK_ERRORS.search(line))
     if not count:
         return Check(name, True, "none in the last 26 hours")
-    detail = describe_disk_errors(lines, known())
+    detail, cleared = describe_disk_errors(
+        lines, known(), checked or (lambda partition: last_fsck(partition, run))
+    )
+    if not detail and cleared:
+        return Check(name, True, "none since the last filesystem check (e2fsck)")
     return Check(name, False, detail or f"{count} disk error messages in the system log")
 
 
