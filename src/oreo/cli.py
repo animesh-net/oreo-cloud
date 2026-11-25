@@ -144,7 +144,8 @@ def build_parser() -> argparse.ArgumentParser:
         (
             "storage",
             _cmd_storage,
-            "check every drive is mounted, writable, not nearly full and logs no disk errors "
+            "check every drive is mounted, writable, not nearly full, logs no disk errors "
+            "and has no filesystem errors "
             "(needs the privileged agent service)",
         ),
         (
