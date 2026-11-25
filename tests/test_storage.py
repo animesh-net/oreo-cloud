@@ -62,15 +62,71 @@ def journal(stdout="", code=0):
     return lambda command: subprocess.CompletedProcess(command, code, stdout, "")
 
 
+SSD = "3c2615f3-7e32-4d1c-9a42-4d1662bea820"
+HOT = "Data (Hot Tier | data-hot-ssd1)"
+
+# The 25 Nov 2026 drop-out: the data SSD fell off USB as sda and came back as sdc.
+DROPOUT = f"""\
+Nov 25 06:30:25 oreo-cloud kernel: EXT4-fs (sda1): mounted filesystem {SSD} r/w with ordered data mode.
+Nov 25 06:30:25 oreo-cloud kernel: EXT4-fs (sdb1): mounted filesystem a5abc5d7-79df-4bfd-9d69-aba0e5d6a3fb r/w with ordered data mode.
+Nov 25 13:50:16 oreo-cloud kernel: device offline error, dev sda, sector 0 op 0x1:(WRITE) flags 0x800
+Nov 25 13:50:16 oreo-cloud kernel: EXT4-fs (sda1): shut down requested (2)
+Nov 25 13:50:16 oreo-cloud kernel: Aborting journal on device sda1-8.
+Nov 25 13:50:16 oreo-cloud kernel: device offline error, dev sda, sector 973342720 op 0x1:(WRITE)
+Nov 25 13:50:16 oreo-cloud kernel: Buffer I/O error on dev sda1, logical block 121667584, lost sync page write
+Nov 25 13:50:16 oreo-cloud kernel: JBD2: I/O error when updating journal superblock for sda1-8.
+Nov 25 13:50:17 oreo-cloud kernel: sd 2:0:0:0: [sdc] Attached SCSI disk
+Nov 25 14:07:36 oreo-cloud kernel: EXT4-fs (sdc1): mounted filesystem {SSD} r/w with ordered data mode.
+"""  # noqa: E501
+
+
+def known(drives=None):
+    return lambda: drives or {"sdc1": (HOT, SSD), "nvme0n1p2": ("System (NVMe | nvme-root)", None)}
+
+
 def test_kernel_log_without_disk_errors_passes():
     assert storage.check_kernel_log(journal("usb 1-1: device descriptor read error\n")).ok
 
 
-def test_kernel_log_counts_disk_errors():
+def test_kernel_log_names_drives_with_errors():
     log = "EXT4-fs error (device sda1): bad block\nBuffer I/O error on dev sdb1\n"
-    check = storage.check_kernel_log(journal(log))
+    check = storage.check_kernel_log(journal(log), known({"sda1": (HOT, SSD)}))
     assert not check.ok
-    assert check.detail == "2 disk error messages in the system log"
+    assert check.detail == (
+        f"{HOT}: filesystem needs a check (e2fsck) (1 disk error); /dev/sdb: 1 disk error"
+    )
+
+
+def test_usb_dropout_names_the_drive_and_its_new_name():
+    check = storage.check_kernel_log(journal(DROPOUT), known())
+    assert check.detail == (
+        f"{HOT}: disconnected at 13:50, back as sdc, filesystem needs a check (e2fsck) "
+        "(5 disk errors)"
+    )
+
+
+def test_disk_of_handles_each_kind_of_drive():
+    assert [storage.disk_of(p) for p in ("sda1", "sdc", "nvme0n1p2", "nvme0n1", "mmcblk0p1")] == [
+        "sda",
+        "sdc",
+        "nvme0n1",
+        "nvme0n1",
+        "mmcblk0",
+    ]
+
+
+def test_filesystem_errors_recorded_by_ext4_fail(tmp_path):
+    mountinfo = tmp_path / "mountinfo"
+    mountinfo.write_text(MOUNTINFO)
+    for partition, count in (("sda1", "3"), ("nvme0n1p2", "0")):
+        folder = tmp_path / "sys/fs/ext4" / partition
+        folder.mkdir(parents=True)
+        (folder / "errors_count").write_text(f"{count}\n")
+    check = storage.check_filesystems(["/", "/mnt/data-hot-ssd1"], mountinfo, tmp_path)
+    assert check == Check(
+        "filesystem errors", False, "/mnt/data-hot-ssd1 (sda1) needs a check (e2fsck)"
+    )
+    assert storage.check_filesystems(["/"], mountinfo, tmp_path).ok
 
 
 def test_unreadable_kernel_log_fails():

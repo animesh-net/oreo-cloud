@@ -47,6 +47,8 @@ sed -i '/^alias os-update=/d;/^alias image-update=/d' ~/.bashrc ~/.bash_aliases 
 
 The nightly backup (23:30) saves the Pi's settings with restic and the Immich and oreo-ai database dumps to `/mnt/osbackup`; restore oreo-ai's with its `scripts/restore-db.sh`.
 
+The storage check (every 30 minutes) names a drive that logs disk errors by tier and label, says when it disconnected and under which name it came back, and flags any filesystem that needs `e2fsck`, both from the kernel log and from the errors ext4 keeps on the drive until it is checked.
+
 Night off: at 00:30 the agent sets the Pi's wake alarm for 06:30, checks it reads back, and powers off; it waits while a backup or OS update runs, stays on if anything fails, and reports the wake-up in the morning. It needs the bootloader set once with `sudo rpi-eeprom-config --edit`: add `POWER_OFF_ON_HALT=1` and `WAKE_ON_GPIO=0`, save, reboot. Then try one wake-up with `docker compose run --rm agent power test` (off for 10 minutes); `power status` shows the setting and the alarm. Immich's own jobs must finish before 00:30: its database backup at 23:00 and its nightly tasks at 22:00 (Administration → Settings).
 
 ## Develop
